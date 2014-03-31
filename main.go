@@ -50,6 +50,7 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 
 	response := WhisperGlobResponse {
 		Name:		glob,
+		Paths:		make([]string, 0),
 	}
 	for _, p := range files {
 		p = p[len(config.WhisperData + "/"):]
