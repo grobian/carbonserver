@@ -42,7 +42,7 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 	 * - implicit * at the end of each query
 	 * - match is either dir or .wsp file
 	 */
-	path := config.WhisperData + "/" + strings.Replace(metric, ".", "/", -1) + "*"
+	path := config.WhisperData + "/" + strings.Replace(glob, ".", "/", -1) + "*"
 	files, err := filepath.Glob(path)
 	if err != nil {
 		files = make([]string, 0)
