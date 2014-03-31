@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/kisielk/whisper-go/whisper"
+	pickle "github.com/kisielk/og-rek"
 
 	"net/http"
 	"encoding/json"
@@ -15,6 +16,7 @@ var config = struct {
 	WhisperData	string
 }{
 	WhisperData: "/var/lib/carbon/whisper",
+	//WhisperData: "..",
 }
 
 type WhisperFetchResponse struct {
@@ -35,12 +37,20 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 //	http://localhost:8080/metrics/glob/?query=test
 	req.ParseForm()
 	glob := req.FormValue("query")
+	format := req.FormValue("format")
+
+	if format != "json" && format != "pickle" {
+		fmt.Printf("dropping invalid uri (format=%s): %s\n",
+				format, req.URL.RequestURI())
+		return
+	}
 
 	/* things to glob:
 	 * - carbon.relays  -> carbon.relays
 	 * - carbon.re      -> carbon.relays, carbon.rewhatever
 	 * - implicit * at the end of each query
 	 * - match is either dir or .wsp file
+	 * (this is less featureful than original carbon)
 	 */
 	path := config.WhisperData + "/" + strings.Replace(glob, ".", "/", -1) + "*"
 	files, err := filepath.Glob(path)
@@ -48,25 +58,50 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 		files = make([]string, 0)
 	}
 
-	response := WhisperGlobResponse {
-		Name:		glob,
-		Paths:		make([]string, 0),
-	}
-	for _, p := range files {
+	leafs := make([]bool, len(files))
+	for i, p := range files {
 		p = p[len(config.WhisperData + "/"):]
 		if strings.HasSuffix(p, ".wsp") {
 			p = p[:len(p) - 4]
+			leafs[i] = true
+		} else {
+			leafs[i] = false
 		}
-		response.Paths = append(response.Paths, strings.Replace(p, "/", ".", -1))
+		files[i] = strings.Replace(p, "/", ".", -1)
 	}
 
-	b, err := json.Marshal(response)
-	if err != nil {
-		fmt.Printf("failed to create JSON data for %s: %s\n", glob, err)
-		return
+	if format == "json" {
+		response := WhisperGlobResponse {
+			Name:		glob,
+			Paths:		make([]string, 0),
+		}
+		for _, p := range files {
+			response.Paths = append(response.Paths, p)
+		}
+		b, err := json.Marshal(response)
+		if err != nil {
+			fmt.Printf("failed to create JSON data for %s: %s\n", glob, err)
+			return
+		}
+		wr.Write(b)
+	} else if format == "pickle" {
+		// [{'metric_path': 'metric', 'intervals': [(x,y)], 'isLeaf': True},]
+		var metrics []map[string]interface{}
+		var m map[string]interface{}
+
+		for i, p := range files {
+			m = make(map[string]interface{})
+			m["metric_path"] = p
+			// m["intervals"] = dunno how to do a tuple here
+			m["isLeaf"] = leafs[i]
+			metrics = append(metrics, m)
+		}
+
+		wr.Header().Set("Content-Type", "application/pickle")
+		pEnc := pickle.NewEncoder(wr)
+		pEnc.Encode(metrics)
 	}
-	wr.Write(b)
-	fmt.Printf("served %d points\n", len(response.Paths))
+	fmt.Printf("served %d points\n", len(files))
 	return
 }
 
@@ -79,8 +114,9 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 	from := req.FormValue("from")
 	until := req.FormValue("until")
 
-	if format != "json" {
-		fmt.Printf("dropping invalid uri (format): %s\n", req.URL.RequestURI())
+	if format != "json" && format != "pickle" {
+		fmt.Printf("dropping invalid uri (format=%s): %s\n",
+				format, req.URL.RequestURI())
 		return
 	}
 
@@ -109,29 +145,55 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	response := WhisperFetchResponse {
-		Name:		metric,
-		StartTime:	interval.FromTimestamp,
-		StopTime:	interval.UntilTimestamp,
-		StepTime:	interval.Step,
-	}
-	for _, p := range points {
-		response.Values = append(response.Values, p.Value)
+	if format == "json" {
+		response := WhisperFetchResponse {
+			Name:		metric,
+			StartTime:	interval.FromTimestamp,
+			StopTime:	interval.UntilTimestamp,
+			StepTime:	interval.Step,
+		}
+		for _, p := range points {
+			response.Values = append(response.Values, p.Value)
+		}
+
+		b, err := json.Marshal(response)
+		if err != nil {
+			fmt.Printf("failed to create JSON data for %s: %s\n", path, err)
+			return
+		}
+		wr.Write(b)
+	} else if format == "pickle" {
+		//[{'start': 1396271100, 'step': 60, 'name': 'metric',
+		//'values': [9.0, 19.0, None], 'end': 1396273140}
+		var metrics []map[string]interface{}
+		var m map[string]interface{}
+
+		m = make(map[string]interface{})
+		m["start"] = interval.FromTimestamp
+		m["step"] = interval.Step
+		m["end"] = interval.UntilTimestamp
+		m["name"] = metric
+
+		values := make([]interface{}, len(points))
+		for i, p := range points {
+			values[i] = p.Value
+		}
+		m["values"] = values
+
+		metrics = append(metrics, m)
+
+		wr.Header().Set("Content-Type", "application/pickle")
+		pEnc := pickle.NewEncoder(wr)
+		pEnc.Encode(metrics)
 	}
 
-	b, err := json.Marshal(response)
-	if err != nil {
-		fmt.Printf("failed to create JSON data for %s: %s\n", path, err)
-		return
-	}
-	wr.Write(b)
-	fmt.Printf("served %d points\n", len(response.Values))
+	fmt.Printf("served %d points\n", len(points))
 	return
 }
 
 func main() {
-	http.HandleFunc("/metrics/glob/", findHandler)
-	http.HandleFunc("/metrics/fetch/", fetchHandler)
+	http.HandleFunc("/metrics/find/", findHandler)
+	http.HandleFunc("/render/", fetchHandler)
 
 	http.ListenAndServe(":8080", nil)
 }
