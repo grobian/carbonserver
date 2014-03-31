@@ -132,5 +132,5 @@ func main() {
 	http.HandleFunc("/metrics/glob/", findHandler)
 	http.HandleFunc("/metrics/fetch/", fetchHandler)
 
-	http.ListenAndServe("localhost:8080", nil)
+	http.ListenAndServe(":8080", nil)
 }
