@@ -124,36 +124,58 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 	w, err := whisper.Open(path)
 	if err != nil {
 		fmt.Printf("failed to open %s: %s\n", path, err)
-		return
+		w = nil
 	}
-	defer w.Close()
 
 	i, err := strconv.Atoi(from)
+	var fromTime uint32
 	if err != nil {
 		fmt.Printf("fromTime (%s) invalid: %s\n", from, err)
+		if w != nil {
+			w.Close()
+		}
+		w = nil
+	} else {
+		fromTime = uint32(i)
 	}
-	fromTime := uint32(i)
 	i, err = strconv.Atoi(until)
+	var untilTime uint32
 	if err != nil {
 		fmt.Printf("untilTime (%s) invalid: %s\n", from, err)
+		if w != nil {
+			w.Close()
+		}
+		w = nil
+	} else {
+		untilTime = uint32(i)
 	}
-	untilTime := uint32(i)
+	
+	if (w != nil) {
+		defer w.Close()
+	}
 
-	interval, points, err := w.FetchUntil(fromTime, untilTime)
-	if err != nil {
-		fmt.Printf("failed to getch points from %s: %s\n", path, err)
-		return
+	var interval whisper.Interval
+	var points []whisper.Point
+	if w != nil {
+		interval, points, err = w.FetchUntil(fromTime, untilTime)
+		if err != nil {
+			fmt.Printf("failed to getch points from %s: %s\n", path, err)
+			return
+		}
 	}
 
 	if format == "json" {
-		response := WhisperFetchResponse {
-			Name:		metric,
-			StartTime:	interval.FromTimestamp,
-			StopTime:	interval.UntilTimestamp,
-			StepTime:	interval.Step,
-		}
-		for _, p := range points {
-			response.Values = append(response.Values, p.Value)
+		var response WhisperFetchResponse
+		if w != nil {
+			response = WhisperFetchResponse {
+				Name:		metric,
+				StartTime:	interval.FromTimestamp,
+				StopTime:	interval.UntilTimestamp,
+				StepTime:	interval.Step,
+			}
+			for _, p := range points {
+				response.Values = append(response.Values, p.Value)
+			}
 		}
 
 		b, err := json.Marshal(response)
@@ -168,19 +190,20 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 		var metrics []map[string]interface{}
 		var m map[string]interface{}
 
-		m = make(map[string]interface{})
-		m["start"] = interval.FromTimestamp
-		m["step"] = interval.Step
-		m["end"] = interval.UntilTimestamp
-		m["name"] = metric
+		if w != nil {
+			m = make(map[string]interface{})
+			m["start"] = interval.FromTimestamp
+			m["step"] = interval.Step
+			m["end"] = interval.UntilTimestamp
+			m["name"] = metric
 
-		values := make([]interface{}, len(points))
-		for i, p := range points {
-			values[i] = p.Value
+			values := make([]interface{}, len(points))
+			for i, p := range points {
+				values[i] = p.Value
+			}
+			m["values"] = values
+			metrics = append(metrics, m)
 		}
-		m["values"] = values
-
-		metrics = append(metrics, m)
 
 		wr.Header().Set("Content-Type", "application/pickle")
 		pEnc := pickle.NewEncoder(wr)
