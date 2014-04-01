@@ -101,7 +101,7 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 		pEnc := pickle.NewEncoder(wr)
 		pEnc.Encode(metrics)
 	}
-	fmt.Printf("served %d points\n", len(files))
+	fmt.Printf("find: %d hits for %s\n", len(files), glob)
 	return
 }
 
@@ -123,7 +123,8 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 	path := config.WhisperData + "/" + strings.Replace(metric, ".", "/", -1) + ".wsp"
 	w, err := whisper.Open(path)
 	if err != nil {
-		fmt.Printf("failed to open %s: %s\n", path, err)
+		// the FE/carbonzipper often requests metrics we don't have
+		//fmt.Printf("failed to open %s: %s\n", path, err)
 		w = nil
 	}
 
@@ -159,7 +160,7 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 	if w != nil {
 		interval, points, err = w.FetchUntil(fromTime, untilTime)
 		if err != nil {
-			fmt.Printf("failed to getch points from %s: %s\n", path, err)
+			fmt.Printf("failed to fetch points from %s: %s\n", path, err)
 			return
 		}
 	}
@@ -210,7 +211,7 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 		pEnc.Encode(metrics)
 	}
 
-	fmt.Printf("served %d points\n", len(points))
+	fmt.Printf("rendered %d points for %s\n", len(points), metric)
 	return
 }
 
