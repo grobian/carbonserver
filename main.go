@@ -1,7 +1,8 @@
 package main
 
 import (
-	"github.com/kisielk/whisper-go/whisper"
+	//"github.com/kisielk/whisper-go/whisper"
+	whisper "github.com/robyoung/go-whisper"
 	pickle "github.com/kisielk/og-rek"
 
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"strconv"
+	"math"
 	"fmt"
 )
 
@@ -20,16 +22,17 @@ var config = struct {
 }
 
 type WhisperFetchResponse struct {
-	Name		string		`json:"name"`
-	StartTime	uint32		`json:"startTime"`
-	StopTime	uint32		`json:"stopTime"`
-	StepTime	uint32		`json:"stepTime"`
-	Values		[]float64	`json:"values"`
+	Name        string      `json:"name"`
+	StartTime   int         `json:"startTime"`
+	StopTime    int         `json:"stopTime"`
+	StepTime    int         `json:"stepTime"`
+	Values      []float64   `json:"values"`
+	IsAbsent    []bool      `json:"isAbsent"`
 }
 
 type WhisperGlobResponse struct {
-	Name		string		`json:"name"`
-	Paths		[]string	`json:"paths"`
+	Name        string      `json:"name"`
+	Paths       []string    `json:"paths"`
 }
 
 func findHandler(wr http.ResponseWriter, req *http.Request) {
@@ -163,6 +166,7 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 	} else {
 		fromTime = uint32(i)
 	}
+	fromTime := int(i)
 	i, err = strconv.Atoi(until)
 	var untilTime uint32
 	if err != nil {
@@ -174,32 +178,36 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 	} else {
 		untilTime = uint32(i)
 	}
-	
+
 	if (w != nil) {
 		defer w.Close()
 	}
+	untilTime := int(i)
 
-	var interval whisper.Interval
-	var points []whisper.Point
-	if w != nil {
-		interval, points, err = w.FetchUntil(fromTime, untilTime)
-		if err != nil {
-			fmt.Printf("failed to fetch points from %s: %s\n", path, err)
-			return
-		}
+	points, err := w.Fetch(fromTime, untilTime)
+	if err != nil {
+		fmt.Printf("failed to getch points from %s: %s\n", path, err)
+		return
 	}
+	values := points.Values()
 
 	if format == "json" {
-		var response WhisperFetchResponse
-		if w != nil {
-			response = WhisperFetchResponse {
-				Name:		metric,
-				StartTime:	interval.FromTimestamp,
-				StopTime:	interval.UntilTimestamp,
-				StepTime:	interval.Step,
-			}
-			for _, p := range points {
-				response.Values = append(response.Values, p.Value)
+		response := WhisperFetchResponse {
+			Name:		metric,
+			StartTime:	points.FromTime(),
+			StopTime:	points.UntilTime(),
+			StepTime:	points.Step(),
+			Values:		make([]float64, len(values)),
+			IsAbsent:	make([]bool, len(values)),
+		}
+
+		for i, p := range values {
+			if math.IsNaN(p) {
+				response.Values[i] = 0
+				response.IsAbsent[i] = true
+			} else {
+				response.Values[i] = p
+				response.IsAbsent[i] = false
 			}
 		}
 
@@ -215,27 +223,30 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 		var metrics []map[string]interface{}
 		var m map[string]interface{}
 
-		if w != nil {
-			m = make(map[string]interface{})
-			m["start"] = interval.FromTimestamp
-			m["step"] = interval.Step
-			m["end"] = interval.UntilTimestamp
-			m["name"] = metric
+		m = make(map[string]interface{})
+		m["start"] = points.FromTime()
+		m["step"] = points.Step()
+		m["end"] = points.UntilTime()
+		m["name"] = metric
 
-			values := make([]interface{}, len(points))
-			for i, p := range points {
-				values[i] = p.Value
+		mv := make([]interface{}, len(values))
+		for i, p := range values {
+			if math.IsNaN(p) {
+				mv[i] = nil
+			} else {
+				mv[i] = p
 			}
-			m["values"] = values
-			metrics = append(metrics, m)
 		}
+
+		m["values"] = mv
+		metrics = append(metrics, m)
 
 		wr.Header().Set("Content-Type", "application/pickle")
 		pEnc := pickle.NewEncoder(wr)
 		pEnc.Encode(metrics)
 	}
 
-	fmt.Printf("rendered %d points for %s\n", len(points), metric)
+	fmt.Printf("served %d points\n", len(values))
 	return
 }
 
