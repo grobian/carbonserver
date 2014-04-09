@@ -15,8 +15,8 @@ import (
 var config = struct {
 	WhisperData	string
 }{
-	WhisperData: "/var/lib/carbon/whisper",
-	//WhisperData: "..",
+	//WhisperData: "/var/lib/carbon/whisper",
+	WhisperData: "..",
 }
 
 type WhisperFetchResponse struct {
@@ -48,14 +48,38 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 	/* things to glob:
 	 * - carbon.relays  -> carbon.relays
 	 * - carbon.re      -> carbon.relays, carbon.rewhatever
+	 * - carbon.[rz]    -> carbon.relays, carbon.zipper
+	 * - carbon.{re,zi} -> carbon.relays, carbon.zipper
 	 * - implicit * at the end of each query
 	 * - match is either dir or .wsp file
-	 * (this is less featureful than original carbon)
-	 */
-	path := config.WhisperData + "/" + strings.Replace(glob, ".", "/", -1) + "*"
-	files, err := filepath.Glob(path)
-	if err != nil {
-		files = make([]string, 0)
+	 * unfortunately, filepath.Glob doesn't handle the curly brace
+	 * expansion for us */
+	lbrace := strings.Index(glob, "{")
+	rbrace := -1
+	if lbrace > -1 {
+		rbrace = strings.Index(glob[lbrace:], "}")
+		if rbrace > -1 {
+			rbrace += lbrace
+		}
+	}
+	files := make([]string, 0)
+	if lbrace > -1 && rbrace > -1 {
+		expansion := glob[lbrace + 1:rbrace]
+		parts := strings.Split(expansion, ",")
+		for _, sub := range parts {
+			sglob := glob[:lbrace] + sub + glob[rbrace + 1:]
+			path := config.WhisperData + "/" + strings.Replace(sglob, ".", "/", -1) + "*"
+			nfiles, err := filepath.Glob(path)
+			if err == nil {
+				files = append(files, nfiles...)
+			}
+		}
+	} else {
+		path := config.WhisperData + "/" + strings.Replace(glob, ".", "/", -1) + "*"
+		nfiles, err := filepath.Glob(path)
+		if err != nil {
+			files = append(files, nfiles...)
+		}
 	}
 
 	leafs := make([]bool, len(files))
