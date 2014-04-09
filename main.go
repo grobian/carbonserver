@@ -144,6 +144,7 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 	if format != "json" && format != "pickle" {
 		fmt.Printf("dropping invalid uri (format=%s): %s\n",
 				format, req.URL.RequestURI())
+		http.Error(wr, "Bad request (unsupported format)", http.StatusBadRequest)
 		return
 	}
 
@@ -156,33 +157,30 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 	}
 
 	i, err := strconv.Atoi(from)
-	var fromTime uint32
 	if err != nil {
 		fmt.Printf("fromTime (%s) invalid: %s\n", from, err)
 		if w != nil {
 			w.Close()
 		}
 		w = nil
-	} else {
-		fromTime = uint32(i)
 	}
 	fromTime := int(i)
 	i, err = strconv.Atoi(until)
-	var untilTime uint32
 	if err != nil {
 		fmt.Printf("untilTime (%s) invalid: %s\n", from, err)
 		if w != nil {
 			w.Close()
 		}
 		w = nil
-	} else {
-		untilTime = uint32(i)
 	}
+	untilTime := int(i)
 
 	if (w != nil) {
 		defer w.Close()
+	} else {
+		http.Error(wr, "Bad request (invalid from/until time)", http.StatusBadRequest)
+		return
 	}
-	untilTime := int(i)
 
 	points, err := w.Fetch(fromTime, untilTime)
 	if err != nil {
