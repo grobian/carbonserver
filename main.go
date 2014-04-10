@@ -245,7 +245,7 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 		pEnc.Encode(metrics)
 	}
 
-	fmt.Printf("served %d points\n", len(values))
+	fmt.Printf("served %d points for %s\n", len(values), metric)
 	return
 }
 
