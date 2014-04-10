@@ -17,8 +17,8 @@ import (
 var config = struct {
 	WhisperData	string
 }{
-	//WhisperData: "/var/lib/carbon/whisper",
-	WhisperData: "..",
+	WhisperData: "/var/lib/carbon/whisper",
+	//WhisperData: "..",
 }
 
 type WhisperFetchResponse struct {
