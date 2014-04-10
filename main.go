@@ -153,7 +153,8 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		// the FE/carbonzipper often requests metrics we don't have
 		//fmt.Printf("failed to open %s: %s\n", path, err)
-		w = nil
+		http.Error(wr, "Metric not found", http.StatusNotFound)
+		return
 	}
 
 	i, err := strconv.Atoi(from)
