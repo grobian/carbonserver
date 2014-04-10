@@ -80,7 +80,7 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 	} else {
 		path := config.WhisperData + "/" + strings.Replace(glob, ".", "/", -1) + "*"
 		nfiles, err := filepath.Glob(path)
-		if err != nil {
+		if err == nil {
 			files = append(files, nfiles...)
 		}
 	}
