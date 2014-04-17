@@ -1,8 +1,7 @@
 package main
 
 import (
-	//"github.com/kisielk/whisper-go/whisper"
-	whisper "github.com/robyoung/go-whisper"
+	whisper "github.com/grobian/go-whisper"
 	pickle "github.com/kisielk/og-rek"
 
 	"net/http"
