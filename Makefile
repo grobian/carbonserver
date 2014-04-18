@@ -11,7 +11,7 @@ dist:
 		--prefix=$(distdir)/ v$(VERSION) \
 		| tar -zxf -
 	cp -a src $(distdir)/
-	tar -zxf $(distdir).tar.gz $(distdir)
+	tar -zcf $(distdir).tar.gz $(distdir)
 
 clean:
 	rm -rf carbonserver $(distdir)
