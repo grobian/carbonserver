@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"math"
 	"fmt"
+	"os"
 )
 
 var config = struct {
@@ -34,6 +35,8 @@ type WhisperGlobResponse struct {
 	Paths       []string    `json:"paths"`
 }
 
+var log Logger
+
 func findHandler(wr http.ResponseWriter, req *http.Request) {
 //	GET /metrics/find/?local=1&format=pickle&query=general.hadoop.lhr4.ha201jobtracker-01.jobtracker.NonHeapMemoryUsage.committed HTTP/1.1
 //	http://localhost:8080/metrics/find/?query=test
@@ -42,8 +45,10 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 	format := req.FormValue("format")
 
 	if format != "json" && format != "pickle" {
-		fmt.Printf("dropping invalid uri (format=%s): %s\n",
+		log.Warn("dropping invalid uri (format=%s): %s",
 				format, req.URL.RequestURI())
+		http.Error(wr, "Bad request (unsupported format)",
+				http.StatusBadRequest)
 		return
 	}
 
@@ -106,7 +111,7 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 		}
 		b, err := json.Marshal(response)
 		if err != nil {
-			fmt.Printf("failed to create JSON data for %s: %s\n", glob, err)
+			log.Error("failed to create JSON data for glob %s: %s", glob, err)
 			return
 		}
 		wr.Write(b)
@@ -127,7 +132,7 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 		pEnc := pickle.NewEncoder(wr)
 		pEnc.Encode(metrics)
 	}
-	fmt.Printf("find: %d hits for %s\n", len(files), glob)
+	log.Info("find: %d hits for %s", len(files), glob)
 	return
 }
 
@@ -141,9 +146,10 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 	until := req.FormValue("until")
 
 	if format != "json" && format != "pickle" {
-		fmt.Printf("dropping invalid uri (format=%s): %s\n",
+		log.Warn("dropping invalid uri (format=%s): %s",
 				format, req.URL.RequestURI())
-		http.Error(wr, "Bad request (unsupported format)", http.StatusBadRequest)
+		http.Error(wr, "Bad request (unsupported format)",
+				http.StatusBadRequest)
 		return
 	}
 
@@ -151,14 +157,15 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 	w, err := whisper.Open(path)
 	if err != nil {
 		// the FE/carbonzipper often requests metrics we don't have
-		//fmt.Printf("failed to open %s: %s\n", path, err)
+		log.Debug("failed to %s", err)
 		http.Error(wr, "Metric not found", http.StatusNotFound)
 		return
 	}
 
 	i, err := strconv.Atoi(from)
 	if err != nil {
-		fmt.Printf("fromTime (%s) invalid: %s\n", from, err)
+		log.Debug("fromTime (%s) invalid: %s (in %s)",
+				from, err, req.URL.RequestURI)
 		if w != nil {
 			w.Close()
 		}
@@ -167,7 +174,8 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 	fromTime := int(i)
 	i, err = strconv.Atoi(until)
 	if err != nil {
-		fmt.Printf("untilTime (%s) invalid: %s\n", from, err)
+		log.Debug("untilTime (%s) invalid: %s (in %s)",
+				from, err, req.URL.RequestURI)
 		if w != nil {
 			w.Close()
 		}
@@ -178,13 +186,16 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 	if (w != nil) {
 		defer w.Close()
 	} else {
-		http.Error(wr, "Bad request (invalid from/until time)", http.StatusBadRequest)
+		http.Error(wr, "Bad request (invalid from/until time)",
+				http.StatusBadRequest)
 		return
 	}
 
 	points, err := w.Fetch(fromTime, untilTime)
 	if err != nil {
-		fmt.Printf("failed to getch points from %s: %s\n", path, err)
+		log.Error("failed to fetch points from %s: %s", path, err)
+		http.Error(wr, "Fetching data points failed",
+				http.StatusInternalServerError)
 		return
 	}
 	values := points.Values()
@@ -211,7 +222,7 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 
 		b, err := json.Marshal(response)
 		if err != nil {
-			fmt.Printf("failed to create JSON data for %s: %s\n", path, err)
+			log.Error("failed to create JSON data for %s: %s", path, err)
 			return
 		}
 		wr.Write(b)
@@ -244,13 +255,84 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 		pEnc.Encode(metrics)
 	}
 
-	fmt.Printf("served %d points for %s\n", len(values), metric)
+	log.Info("served %d points for %s", len(values), metric)
 	return
 }
 
 func main() {
+	log = NewOutputLogger(INFO);
+
 	http.HandleFunc("/metrics/find/", findHandler)
 	http.HandleFunc("/render/", fetchHandler)
 
-	http.ListenAndServe(":8080", nil)
+	log.Info("listening on port 8080")
+	err := http.ListenAndServe(":8080", nil)
+	if err != nil {
+		log.Fatal("%s", err)
+	}
+	log.Info("stopped")
 }
+
+// Simple wrapper to enable/disable lots of spam
+type Logger interface {
+	Info(format string, a ...interface{})
+	Warn(format string, a ...interface{})
+	Error(format string, a ...interface{})
+	Fatal(format string, a ...interface{})
+	Debug(format string, a ...interface{})
+}
+
+type LogLevel int
+const (
+	FATAL LogLevel = 0
+	ERROR LogLevel = 1
+	WARN  LogLevel = 2
+	INFO  LogLevel = 3
+	DEBUG LogLevel = 4
+)
+type outputLogger struct {
+	level LogLevel
+	out *os.File
+	err *os.File
+}
+
+func NewOutputLogger(level LogLevel) *outputLogger {
+	r := new(outputLogger)
+	r.level = level;
+	r.out = os.Stdout;
+	r.err = os.Stderr;
+
+	return r
+}
+
+func (l *outputLogger) Debug(format string, a ...interface{}) {
+	if l.level >= DEBUG {
+		l.out.WriteString(fmt.Sprintf("DEBUG: " + format + "\n", a...))
+	}
+}
+
+func (l *outputLogger) Info(format string, a ...interface{}) {
+	if l.level >= INFO {
+		l.out.WriteString(fmt.Sprintf("INFO: " + format + "\n", a...))
+	}
+}
+
+func (l *outputLogger) Warn(format string, a ...interface{}) {
+	if l.level >= WARN {
+		l.out.WriteString(fmt.Sprintf("WARN: " + format + "\n", a...))
+	}
+}
+
+func (l *outputLogger) Error(format string, a ...interface{}) {
+	if l.level >= ERROR {
+		l.err.WriteString(fmt.Sprintf("ERROR: " + format + "\n", a...))
+	}
+}
+
+func (l *outputLogger) Fatal(format string, a ...interface{}) {
+	if l.level >= FATAL {
+		l.err.WriteString(fmt.Sprintf("ERROR: " + format + "\n", a...))
+	}
+	os.Exit(1)
+}
+
