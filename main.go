@@ -10,6 +10,7 @@ import (
 	"strings"
 	"strconv"
 	"math"
+	"flag"
 	"fmt"
 	"os"
 )
@@ -18,7 +19,6 @@ var config = struct {
 	WhisperData	string
 }{
 	WhisperData: "/var/lib/carbon/whisper",
-	//WhisperData: "..",
 }
 
 type WhisperFetchResponse struct {
@@ -266,13 +266,31 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 }
 
 func main() {
-	log = NewOutputLogger(INFO);
+	port := flag.Int("p", 8080, "port to bind to")
+	verbose := flag.Bool("v", false, "enable verbose logging")
+	debug := flag.Bool("vv", false, "enable more verbose (debug) logging")
+	whisperdata := flag.String("w", config.WhisperData, "location where whisper files are stored")
+
+	flag.Parse()
+
+	loglevel := WARN
+	if *verbose {
+		loglevel = INFO
+	}
+	if *debug {
+		loglevel = DEBUG
+	}
+	log = NewOutputLogger(loglevel);
+
+	config.WhisperData = *whisperdata
+	log.Info("reading whisper files from: %s", config.WhisperData)
 
 	http.HandleFunc("/metrics/find/", findHandler)
 	http.HandleFunc("/render/", fetchHandler)
 
-	log.Info("listening on port 8080")
-	err := http.ListenAndServe(":8080", nil)
+	listen := fmt.Sprintf(":%d", *port)
+	log.Info("listening on %s", listen)
+	err := http.ListenAndServe(listen, nil)
 	if err != nil {
 		log.Fatal("%s", err)
 	}
