@@ -52,6 +52,12 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	if glob == "" {
+		log.Warn("dropping invalid request (query=): %s", req.URL.RequestURI())
+		http.Error(wr, "Bad request (no query)", http.StatusBadRequest)
+		return
+	}
+
 	/* things to glob:
 	 * - carbon.relays  -> carbon.relays
 	 * - carbon.re      -> carbon.relays, carbon.rewhatever
