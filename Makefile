@@ -10,8 +10,9 @@ dist:
 		--format=tar.gz \
 		--prefix=$(distdir)/ v$(VERSION) \
 		| tar -zxf -
-	cp -a src $(distdir)/
+	rsync -Ca src $(distdir)/
 	tar -zcf $(distdir).tar.gz $(distdir)
+	rm -rf $(distdir)
 
 clean:
-	rm -rf carbonserver $(distdir)
+	rm -rf carbonserver $(distdir).tar.gz
