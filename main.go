@@ -4,51 +4,51 @@ import (
 	whisper "github.com/grobian/go-whisper"
 	pickle "github.com/kisielk/og-rek"
 
-	"net/http"
 	"encoding/json"
-	"path/filepath"
-	"strings"
-	"strconv"
-	"math"
 	"flag"
 	"fmt"
+	"math"
+	"net/http"
 	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 )
 
 var config = struct {
-	WhisperData	string
+	WhisperData string
 }{
 	WhisperData: "/var/lib/carbon/whisper",
 }
 
 type WhisperFetchResponse struct {
-	Name        string      `json:"name"`
-	StartTime   int         `json:"startTime"`
-	StopTime    int         `json:"stopTime"`
-	StepTime    int         `json:"stepTime"`
-	Values      []float64   `json:"values"`
-	IsAbsent    []bool      `json:"isAbsent"`
+	Name      string    `json:"name"`
+	StartTime int       `json:"startTime"`
+	StopTime  int       `json:"stopTime"`
+	StepTime  int       `json:"stepTime"`
+	Values    []float64 `json:"values"`
+	IsAbsent  []bool    `json:"isAbsent"`
 }
 
 type WhisperGlobResponse struct {
-	Name        string      `json:"name"`
-	Paths       []string    `json:"paths"`
+	Name  string   `json:"name"`
+	Paths []string `json:"paths"`
 }
 
 var log Logger
 
 func findHandler(wr http.ResponseWriter, req *http.Request) {
-//	GET /metrics/find/?local=1&format=pickle&query=general.hadoop.lhr4.ha201jobtracker-01.jobtracker.NonHeapMemoryUsage.committed HTTP/1.1
-//	http://localhost:8080/metrics/find/?query=test
+	//	GET /metrics/find/?local=1&format=pickle&query=general.hadoop.lhr4.ha201jobtracker-01.jobtracker.NonHeapMemoryUsage.committed HTTP/1.1
+	//	http://localhost:8080/metrics/find/?query=test
 	req.ParseForm()
 	glob := req.FormValue("query")
 	format := req.FormValue("format")
 
 	if format != "json" && format != "pickle" {
 		log.Warn("dropping invalid uri (format=%s): %s",
-				format, req.URL.RequestURI())
+			format, req.URL.RequestURI())
 		http.Error(wr, "Bad request (unsupported format)",
-				http.StatusBadRequest)
+			http.StatusBadRequest)
 		return
 	}
 
@@ -77,10 +77,10 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 	}
 	files := make([]string, 0)
 	if lbrace > -1 && rbrace > -1 {
-		expansion := glob[lbrace + 1:rbrace]
+		expansion := glob[lbrace+1 : rbrace]
 		parts := strings.Split(expansion, ",")
 		for _, sub := range parts {
-			sglob := glob[:lbrace] + sub + glob[rbrace + 1:]
+			sglob := glob[:lbrace] + sub + glob[rbrace+1:]
 			path := config.WhisperData + "/" + strings.Replace(sglob, ".", "/", -1) + "*"
 			nfiles, err := filepath.Glob(path)
 			if err == nil {
@@ -97,9 +97,9 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 
 	leafs := make([]bool, len(files))
 	for i, p := range files {
-		p = p[len(config.WhisperData + "/"):]
+		p = p[len(config.WhisperData+"/"):]
 		if strings.HasSuffix(p, ".wsp") {
-			p = p[:len(p) - 4]
+			p = p[:len(p)-4]
 			leafs[i] = true
 		} else {
 			leafs[i] = false
@@ -108,9 +108,9 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 	}
 
 	if format == "json" {
-		response := WhisperGlobResponse {
-			Name:		glob,
-			Paths:		make([]string, 0),
+		response := WhisperGlobResponse{
+			Name:  glob,
+			Paths: make([]string, 0),
 		}
 		for _, p := range files {
 			response.Paths = append(response.Paths, p)
@@ -143,8 +143,8 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 }
 
 func fetchHandler(wr http.ResponseWriter, req *http.Request) {
-//	GET /render/?target=general.me.1.percent_time_active.pfnredis&format=pickle&from=1396008021&until=1396022421 HTTP/1.1
-//	http://localhost:8080/render/?target=testmetric&format=json&from=1395961200&until=1395961800
+	//	GET /render/?target=general.me.1.percent_time_active.pfnredis&format=pickle&from=1396008021&until=1396022421 HTTP/1.1
+	//	http://localhost:8080/render/?target=testmetric&format=json&from=1395961200&until=1395961800
 	req.ParseForm()
 	metric := req.FormValue("target")
 	format := req.FormValue("format")
@@ -153,9 +153,9 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 
 	if format != "json" && format != "pickle" {
 		log.Warn("dropping invalid uri (format=%s): %s",
-				format, req.URL.RequestURI())
+			format, req.URL.RequestURI())
 		http.Error(wr, "Bad request (unsupported format)",
-				http.StatusBadRequest)
+			http.StatusBadRequest)
 		return
 	}
 
@@ -171,7 +171,7 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 	i, err := strconv.Atoi(from)
 	if err != nil {
 		log.Debug("fromTime (%s) invalid: %s (in %s)",
-				from, err, req.URL.RequestURI)
+			from, err, req.URL.RequestURI)
 		if w != nil {
 			w.Close()
 		}
@@ -181,7 +181,7 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 	i, err = strconv.Atoi(until)
 	if err != nil {
 		log.Debug("untilTime (%s) invalid: %s (in %s)",
-				from, err, req.URL.RequestURI)
+			from, err, req.URL.RequestURI)
 		if w != nil {
 			w.Close()
 		}
@@ -189,11 +189,11 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 	}
 	untilTime := int(i)
 
-	if (w != nil) {
+	if w != nil {
 		defer w.Close()
 	} else {
 		http.Error(wr, "Bad request (invalid from/until time)",
-				http.StatusBadRequest)
+			http.StatusBadRequest)
 		return
 	}
 
@@ -201,19 +201,19 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		log.Error("failed to fetch points from %s: %s", path, err)
 		http.Error(wr, "Fetching data points failed",
-				http.StatusInternalServerError)
+			http.StatusInternalServerError)
 		return
 	}
 	values := points.Values()
 
 	if format == "json" {
-		response := WhisperFetchResponse {
-			Name:		metric,
-			StartTime:	points.FromTime(),
-			StopTime:	points.UntilTime(),
-			StepTime:	points.Step(),
-			Values:		make([]float64, len(values)),
-			IsAbsent:	make([]bool, len(values)),
+		response := WhisperFetchResponse{
+			Name:      metric,
+			StartTime: points.FromTime(),
+			StopTime:  points.UntilTime(),
+			StepTime:  points.Step(),
+			Values:    make([]float64, len(values)),
+			IsAbsent:  make([]bool, len(values)),
 		}
 
 		for i, p := range values {
@@ -280,7 +280,7 @@ func main() {
 	if *debug {
 		loglevel = DEBUG
 	}
-	log = NewOutputLogger(loglevel);
+	log = NewOutputLogger(loglevel)
 
 	config.WhisperData = *whisperdata
 	log.Info("reading whisper files from: %s", config.WhisperData)
@@ -307,6 +307,7 @@ type Logger interface {
 }
 
 type LogLevel int
+
 const (
 	FATAL LogLevel = 0
 	ERROR LogLevel = 1
@@ -314,49 +315,49 @@ const (
 	INFO  LogLevel = 3
 	DEBUG LogLevel = 4
 )
+
 type outputLogger struct {
 	level LogLevel
-	out *os.File
-	err *os.File
+	out   *os.File
+	err   *os.File
 }
 
 func NewOutputLogger(level LogLevel) *outputLogger {
 	r := new(outputLogger)
-	r.level = level;
-	r.out = os.Stdout;
-	r.err = os.Stderr;
+	r.level = level
+	r.out = os.Stdout
+	r.err = os.Stderr
 
 	return r
 }
 
 func (l *outputLogger) Debug(format string, a ...interface{}) {
 	if l.level >= DEBUG {
-		l.out.WriteString(fmt.Sprintf("DEBUG: " + format + "\n", a...))
+		l.out.WriteString(fmt.Sprintf("DEBUG: "+format+"\n", a...))
 	}
 }
 
 func (l *outputLogger) Info(format string, a ...interface{}) {
 	if l.level >= INFO {
-		l.out.WriteString(fmt.Sprintf("INFO: " + format + "\n", a...))
+		l.out.WriteString(fmt.Sprintf("INFO: "+format+"\n", a...))
 	}
 }
 
 func (l *outputLogger) Warn(format string, a ...interface{}) {
 	if l.level >= WARN {
-		l.out.WriteString(fmt.Sprintf("WARN: " + format + "\n", a...))
+		l.out.WriteString(fmt.Sprintf("WARN: "+format+"\n", a...))
 	}
 }
 
 func (l *outputLogger) Error(format string, a ...interface{}) {
 	if l.level >= ERROR {
-		l.err.WriteString(fmt.Sprintf("ERROR: " + format + "\n", a...))
+		l.err.WriteString(fmt.Sprintf("ERROR: "+format+"\n", a...))
 	}
 }
 
 func (l *outputLogger) Fatal(format string, a ...interface{}) {
 	if l.level >= FATAL {
-		l.err.WriteString(fmt.Sprintf("ERROR: " + format + "\n", a...))
+		l.err.WriteString(fmt.Sprintf("ERROR: "+format+"\n", a...))
 	}
 	os.Exit(1)
 }
-
