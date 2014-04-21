@@ -3,6 +3,7 @@ package main
 import (
 	whisper "github.com/grobian/go-whisper"
 	pickle "github.com/kisielk/og-rek"
+	g2g "github.com/peterbourgon/g2g"
 
 	"encoding/json"
 	"expvar"
@@ -15,10 +16,12 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 var config = struct {
-	WhisperData string
+	WhisperData  string
+	GraphiteHost string
 }{
 	WhisperData: "/var/lib/carbon/whisper",
 }
@@ -310,6 +313,31 @@ func main() {
 
 	http.HandleFunc("/metrics/find/", findHandler)
 	http.HandleFunc("/render/", fetchHandler)
+
+	// nothing in the config? check the environment
+	if config.GraphiteHost == "" {
+		if host := os.Getenv("GRAPHITEHOST") + ":" + os.Getenv("GRAPHITEPORT"); host != ":" {
+			config.GraphiteHost = host
+		}
+	}
+
+	// only register g2g if we have a graphite host
+	if config.GraphiteHost != "" {
+
+		log.Infof("Using graphite host %v", config.GraphiteHost)
+
+		// register our metrics with graphite
+		graphite, err := g2g.NewGraphite(config.GraphiteHost, 60*time.Second, 10*time.Second)
+		if err != nil {
+			log.Fatalf("unable to connect to to graphite: %v: %v", config.GraphiteHost, err)
+		}
+
+		hostname, _ := os.Hostname()
+		hostname = strings.Replace(hostname, ".", "_", -1)
+
+		graphite.Register(fmt.Sprintf("carbon.server.%s.requests", hostname), Metrics.Requests)
+		graphite.Register(fmt.Sprintf("carbon.server.%s.errors", hostname), Metrics.Errors)
+	}
 
 	listen := fmt.Sprintf(":%d", *port)
 	log.Infof("listening on %s", listen)
