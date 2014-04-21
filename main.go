@@ -308,12 +308,13 @@ type Logger interface {
 
 type LogLevel int
 
+// Logging levels
 const (
-	FATAL LogLevel = 0
-	ERROR LogLevel = 1
-	WARN  LogLevel = 2
-	INFO  LogLevel = 3
-	DEBUG LogLevel = 4
+	FATAL LogLevel = iota
+	ERROR
+	WARN
+	INFO
+	DEBUG
 )
 
 type outputLogger struct {
