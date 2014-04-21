@@ -5,10 +5,12 @@ import (
 	pickle "github.com/kisielk/og-rek"
 
 	"encoding/json"
+	"expvar"
 	"flag"
 	"fmt"
 	"math"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -19,6 +21,15 @@ var config = struct {
 	WhisperData string
 }{
 	WhisperData: "/var/lib/carbon/whisper",
+}
+
+// grouped expvars for /debug/vars and graphite
+var Metrics = struct {
+	Requests *expvar.Int
+	Errors   *expvar.Int
+}{
+	Requests: expvar.NewInt("requests"),
+	Errors:   expvar.NewInt("errors"),
 }
 
 type WhisperFetchResponse struct {
@@ -40,11 +51,15 @@ var log Logger
 func findHandler(wr http.ResponseWriter, req *http.Request) {
 	//	GET /metrics/find/?local=1&format=pickle&query=general.hadoop.lhr4.ha201jobtracker-01.jobtracker.NonHeapMemoryUsage.committed HTTP/1.1
 	//	http://localhost:8080/metrics/find/?query=test
+
+	Metrics.Requests.Add(1)
+
 	req.ParseForm()
 	glob := req.FormValue("query")
 	format := req.FormValue("format")
 
 	if format != "json" && format != "pickle" {
+		Metrics.Errors.Add(1)
 		log.Warnf("dropping invalid uri (format=%s): %s",
 			format, req.URL.RequestURI())
 		http.Error(wr, "Bad request (unsupported format)",
@@ -53,6 +68,7 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 	}
 
 	if glob == "" {
+		Metrics.Errors.Add(1)
 		log.Warnf("dropping invalid request (query=): %s", req.URL.RequestURI())
 		http.Error(wr, "Bad request (no query)", http.StatusBadRequest)
 		return
@@ -117,6 +133,7 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 		}
 		b, err := json.Marshal(response)
 		if err != nil {
+			Metrics.Errors.Add(1)
 			log.Errorf("failed to create JSON data for glob %s: %s", glob, err)
 			return
 		}
@@ -145,6 +162,7 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 	//	GET /render/?target=general.me.1.percent_time_active.pfnredis&format=pickle&from=1396008021&until=1396022421 HTTP/1.1
 	//	http://localhost:8080/render/?target=testmetric&format=json&from=1395961200&until=1395961800
+	Metrics.Requests.Add(1)
 	req.ParseForm()
 	metric := req.FormValue("target")
 	format := req.FormValue("format")
@@ -152,6 +170,7 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 	until := req.FormValue("until")
 
 	if format != "json" && format != "pickle" {
+		Metrics.Errors.Add(1)
 		log.Warnf("dropping invalid uri (format=%s): %s",
 			format, req.URL.RequestURI())
 		http.Error(wr, "Bad request (unsupported format)",
@@ -163,6 +182,7 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 	w, err := whisper.Open(path)
 	if err != nil {
 		// the FE/carbonzipper often requests metrics we don't have
+		Metrics.Errors.Add(1)
 		log.Debugf("failed to %s", err)
 		http.Error(wr, "Metric not found", http.StatusNotFound)
 		return
@@ -192,6 +212,7 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 	if w != nil {
 		defer w.Close()
 	} else {
+		Metrics.Errors.Add(1)
 		http.Error(wr, "Bad request (invalid from/until time)",
 			http.StatusBadRequest)
 		return
@@ -199,6 +220,7 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 
 	points, err := w.Fetch(fromTime, untilTime)
 	if err != nil {
+		Metrics.Errors.Add(1)
 		log.Errorf("failed to fetch points from %s: %s", path, err)
 		http.Error(wr, "Fetching data points failed",
 			http.StatusInternalServerError)
@@ -228,6 +250,7 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 
 		b, err := json.Marshal(response)
 		if err != nil {
+			Metrics.Errors.Add(1)
 			log.Errorf("failed to create JSON data for %s: %s", path, err)
 			return
 		}
