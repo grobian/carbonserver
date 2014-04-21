@@ -1,10 +1,6 @@
 package main
 
 import (
-	whisper "github.com/grobian/go-whisper"
-	pickle "github.com/kisielk/og-rek"
-	g2g "github.com/peterbourgon/g2g"
-
 	"encoding/json"
 	"expvar"
 	"flag"
@@ -17,6 +13,10 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	whisper "github.com/grobian/go-whisper"
+	pickle "github.com/kisielk/og-rek"
+	g2g "github.com/peterbourgon/g2g"
 )
 
 var config = struct {
