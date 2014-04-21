@@ -45,7 +45,7 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 	format := req.FormValue("format")
 
 	if format != "json" && format != "pickle" {
-		log.Warn("dropping invalid uri (format=%s): %s",
+		log.Warnf("dropping invalid uri (format=%s): %s",
 			format, req.URL.RequestURI())
 		http.Error(wr, "Bad request (unsupported format)",
 			http.StatusBadRequest)
@@ -53,7 +53,7 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 	}
 
 	if glob == "" {
-		log.Warn("dropping invalid request (query=): %s", req.URL.RequestURI())
+		log.Warnf("dropping invalid request (query=): %s", req.URL.RequestURI())
 		http.Error(wr, "Bad request (no query)", http.StatusBadRequest)
 		return
 	}
@@ -117,7 +117,7 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 		}
 		b, err := json.Marshal(response)
 		if err != nil {
-			log.Error("failed to create JSON data for glob %s: %s", glob, err)
+			log.Errorf("failed to create JSON data for glob %s: %s", glob, err)
 			return
 		}
 		wr.Write(b)
@@ -138,7 +138,7 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 		pEnc := pickle.NewEncoder(wr)
 		pEnc.Encode(metrics)
 	}
-	log.Info("find: %d hits for %s", len(files), glob)
+	log.Infof("find: %d hits for %s", len(files), glob)
 	return
 }
 
@@ -152,7 +152,7 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 	until := req.FormValue("until")
 
 	if format != "json" && format != "pickle" {
-		log.Warn("dropping invalid uri (format=%s): %s",
+		log.Warnf("dropping invalid uri (format=%s): %s",
 			format, req.URL.RequestURI())
 		http.Error(wr, "Bad request (unsupported format)",
 			http.StatusBadRequest)
@@ -163,14 +163,14 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 	w, err := whisper.Open(path)
 	if err != nil {
 		// the FE/carbonzipper often requests metrics we don't have
-		log.Debug("failed to %s", err)
+		log.Debugf("failed to %s", err)
 		http.Error(wr, "Metric not found", http.StatusNotFound)
 		return
 	}
 
 	i, err := strconv.Atoi(from)
 	if err != nil {
-		log.Debug("fromTime (%s) invalid: %s (in %s)",
+		log.Debugf("fromTime (%s) invalid: %s (in %s)",
 			from, err, req.URL.RequestURI)
 		if w != nil {
 			w.Close()
@@ -180,7 +180,7 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 	fromTime := int(i)
 	i, err = strconv.Atoi(until)
 	if err != nil {
-		log.Debug("untilTime (%s) invalid: %s (in %s)",
+		log.Debugf("untilTime (%s) invalid: %s (in %s)",
 			from, err, req.URL.RequestURI)
 		if w != nil {
 			w.Close()
@@ -199,7 +199,7 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 
 	points, err := w.Fetch(fromTime, untilTime)
 	if err != nil {
-		log.Error("failed to fetch points from %s: %s", path, err)
+		log.Errorf("failed to fetch points from %s: %s", path, err)
 		http.Error(wr, "Fetching data points failed",
 			http.StatusInternalServerError)
 		return
@@ -228,7 +228,7 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 
 		b, err := json.Marshal(response)
 		if err != nil {
-			log.Error("failed to create JSON data for %s: %s", path, err)
+			log.Errorf("failed to create JSON data for %s: %s", path, err)
 			return
 		}
 		wr.Write(b)
@@ -261,7 +261,7 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 		pEnc.Encode(metrics)
 	}
 
-	log.Info("served %d points for %s", len(values), metric)
+	log.Infof("served %d points for %s", len(values), metric)
 	return
 }
 
@@ -283,27 +283,27 @@ func main() {
 	log = NewOutputLogger(loglevel)
 
 	config.WhisperData = *whisperdata
-	log.Info("reading whisper files from: %s", config.WhisperData)
+	log.Infof("reading whisper files from: %s", config.WhisperData)
 
 	http.HandleFunc("/metrics/find/", findHandler)
 	http.HandleFunc("/render/", fetchHandler)
 
 	listen := fmt.Sprintf(":%d", *port)
-	log.Info("listening on %s", listen)
+	log.Infof("listening on %s", listen)
 	err := http.ListenAndServe(listen, nil)
 	if err != nil {
-		log.Fatal("%s", err)
+		log.Fatalf("%s", err)
 	}
-	log.Info("stopped")
+	log.Infof("stopped")
 }
 
-// Simple wrapper to enable/disable lots of spam
+// Logger is a wrapper to enable/disable lots of spam
 type Logger interface {
-	Info(format string, a ...interface{})
-	Warn(format string, a ...interface{})
-	Error(format string, a ...interface{})
-	Fatal(format string, a ...interface{})
-	Debug(format string, a ...interface{})
+	Infof(format string, a ...interface{})
+	Warnf(format string, a ...interface{})
+	Errorf(format string, a ...interface{})
+	Fatalf(format string, a ...interface{})
+	Debugf(format string, a ...interface{})
 }
 
 type LogLevel int
@@ -332,31 +332,31 @@ func NewOutputLogger(level LogLevel) *outputLogger {
 	return r
 }
 
-func (l *outputLogger) Debug(format string, a ...interface{}) {
+func (l *outputLogger) Debugf(format string, a ...interface{}) {
 	if l.level >= DEBUG {
 		l.out.WriteString(fmt.Sprintf("DEBUG: "+format+"\n", a...))
 	}
 }
 
-func (l *outputLogger) Info(format string, a ...interface{}) {
+func (l *outputLogger) Infof(format string, a ...interface{}) {
 	if l.level >= INFO {
 		l.out.WriteString(fmt.Sprintf("INFO: "+format+"\n", a...))
 	}
 }
 
-func (l *outputLogger) Warn(format string, a ...interface{}) {
+func (l *outputLogger) Warnf(format string, a ...interface{}) {
 	if l.level >= WARN {
 		l.out.WriteString(fmt.Sprintf("WARN: "+format+"\n", a...))
 	}
 }
 
-func (l *outputLogger) Error(format string, a ...interface{}) {
+func (l *outputLogger) Errorf(format string, a ...interface{}) {
 	if l.level >= ERROR {
 		l.err.WriteString(fmt.Sprintf("ERROR: "+format+"\n", a...))
 	}
 }
 
-func (l *outputLogger) Fatal(format string, a ...interface{}) {
+func (l *outputLogger) Fatalf(format string, a ...interface{}) {
 	if l.level >= FATAL {
 		l.err.WriteString(fmt.Sprintf("ERROR: "+format+"\n", a...))
 	}
