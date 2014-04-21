@@ -75,7 +75,7 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 			rbrace += lbrace
 		}
 	}
-	files := make([]string, 0)
+	var files []string
 	if lbrace > -1 && rbrace > -1 {
 		expansion := glob[lbrace+1 : rbrace]
 		parts := strings.Split(expansion, ",")
