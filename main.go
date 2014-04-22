@@ -52,8 +52,7 @@ type WhisperGlobResponse struct {
 var log Logger
 
 func findHandler(wr http.ResponseWriter, req *http.Request) {
-	//	GET /metrics/find/?local=1&format=pickle&query=general.hadoop.lhr4.ha201jobtracker-01.jobtracker.NonHeapMemoryUsage.committed HTTP/1.1
-	//	http://localhost:8080/metrics/find/?query=test
+	// URL: /metrics/find/?local=1&format=pickle&query=the.metric.path.with.glob
 
 	Metrics.Requests.Add(1)
 
@@ -163,8 +162,8 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 }
 
 func fetchHandler(wr http.ResponseWriter, req *http.Request) {
-	//	GET /render/?target=general.me.1.percent_time_active.pfnredis&format=pickle&from=1396008021&until=1396022421 HTTP/1.1
-	//	http://localhost:8080/render/?target=testmetric&format=json&from=1395961200&until=1395961800
+	// URL: /render/?target=the.metric.name&format=pickle&from=1396008021&until=1396022421
+
 	Metrics.Requests.Add(1)
 	req.ParseForm()
 	metric := req.FormValue("target")
