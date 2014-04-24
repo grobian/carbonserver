@@ -28,11 +28,15 @@ var config = struct {
 
 // grouped expvars for /debug/vars and graphite
 var Metrics = struct {
-	Requests *expvar.Int
-	Errors   *expvar.Int
+	RenderRequests *expvar.Int
+	RenderErrors   *expvar.Int
+	FindRequests   *expvar.Int
+	FindErrors     *expvar.Int
 }{
-	Requests: expvar.NewInt("requests"),
-	Errors:   expvar.NewInt("errors"),
+	RenderRequests: expvar.NewInt("render_requests"),
+	RenderErrors:   expvar.NewInt("render_errors"),
+	FindRequests:   expvar.NewInt("find_requests"),
+	FindErrors:     expvar.NewInt("find_errors"),
 }
 
 type WhisperFetchResponse struct {
@@ -54,14 +58,14 @@ var log Logger
 func findHandler(wr http.ResponseWriter, req *http.Request) {
 	// URL: /metrics/find/?local=1&format=pickle&query=the.metric.path.with.glob
 
-	Metrics.Requests.Add(1)
+	Metrics.FindRequests.Add(1)
 
 	req.ParseForm()
 	glob := req.FormValue("query")
 	format := req.FormValue("format")
 
 	if format != "json" && format != "pickle" {
-		Metrics.Errors.Add(1)
+		Metrics.FindErrors.Add(1)
 		log.Warnf("dropping invalid uri (format=%s): %s",
 			format, req.URL.RequestURI())
 		http.Error(wr, "Bad request (unsupported format)",
@@ -70,7 +74,7 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 	}
 
 	if glob == "" {
-		Metrics.Errors.Add(1)
+		Metrics.FindErrors.Add(1)
 		log.Warnf("dropping invalid request (query=): %s", req.URL.RequestURI())
 		http.Error(wr, "Bad request (no query)", http.StatusBadRequest)
 		return
@@ -135,7 +139,7 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 		}
 		b, err := json.Marshal(response)
 		if err != nil {
-			Metrics.Errors.Add(1)
+			Metrics.FindErrors.Add(1)
 			log.Errorf("failed to create JSON data for glob %s: %s", glob, err)
 			return
 		}
@@ -164,7 +168,7 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 	// URL: /render/?target=the.metric.name&format=pickle&from=1396008021&until=1396022421
 
-	Metrics.Requests.Add(1)
+	Metrics.RenderRequests.Add(1)
 	req.ParseForm()
 	metric := req.FormValue("target")
 	format := req.FormValue("format")
@@ -172,7 +176,7 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 	until := req.FormValue("until")
 
 	if format != "json" && format != "pickle" {
-		Metrics.Errors.Add(1)
+		Metrics.RenderErrors.Add(1)
 		log.Warnf("dropping invalid uri (format=%s): %s",
 			format, req.URL.RequestURI())
 		http.Error(wr, "Bad request (unsupported format)",
@@ -184,7 +188,7 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 	w, err := whisper.Open(path)
 	if err != nil {
 		// the FE/carbonzipper often requests metrics we don't have
-		Metrics.Errors.Add(1)
+		Metrics.RenderErrors.Add(1)
 		log.Debugf("failed to %s", err)
 		http.Error(wr, "Metric not found", http.StatusNotFound)
 		return
@@ -214,7 +218,7 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 	if w != nil {
 		defer w.Close()
 	} else {
-		Metrics.Errors.Add(1)
+		Metrics.RenderErrors.Add(1)
 		http.Error(wr, "Bad request (invalid from/until time)",
 			http.StatusBadRequest)
 		return
@@ -222,7 +226,7 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 
 	points, err := w.Fetch(fromTime, untilTime)
 	if err != nil {
-		Metrics.Errors.Add(1)
+		Metrics.RenderErrors.Add(1)
 		log.Errorf("failed to fetch points from %s: %s", path, err)
 		http.Error(wr, "Fetching data points failed",
 			http.StatusInternalServerError)
@@ -252,7 +256,7 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 
 		b, err := json.Marshal(response)
 		if err != nil {
-			Metrics.Errors.Add(1)
+			Metrics.RenderErrors.Add(1)
 			log.Errorf("failed to create JSON data for %s: %s", path, err)
 			return
 		}
@@ -334,8 +338,14 @@ func main() {
 		hostname, _ := os.Hostname()
 		hostname = strings.Replace(hostname, ".", "_", -1)
 
-		graphite.Register(fmt.Sprintf("carbon.server.%s.requests", hostname), Metrics.Requests)
-		graphite.Register(fmt.Sprintf("carbon.server.%s.errors", hostname), Metrics.Errors)
+		graphite.Register(fmt.Sprintf("carbon.server.%s.render_requests",
+			hostname), Metrics.RenderRequests)
+		graphite.Register(fmt.Sprintf("carbon.server.%s.render_errors",
+			hostname), Metrics.RenderErrors)
+		graphite.Register(fmt.Sprintf("carbon.server.%s.find_requests",
+			hostname), Metrics.FindRequests)
+		graphite.Register(fmt.Sprintf("carbon.server.%s.find_errors",
+			hostname), Metrics.FindErrors)
 	}
 
 	listen := fmt.Sprintf(":%d", *port)
