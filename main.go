@@ -197,7 +197,7 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 	i, err := strconv.Atoi(from)
 	if err != nil {
 		log.Debugf("fromTime (%s) invalid: %s (in %s)",
-			from, err, req.URL.RequestURI)
+			from, err, req.URL.RequestURI())
 		if w != nil {
 			w.Close()
 		}
@@ -207,7 +207,7 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 	i, err = strconv.Atoi(until)
 	if err != nil {
 		log.Debugf("untilTime (%s) invalid: %s (in %s)",
-			from, err, req.URL.RequestURI)
+			from, err, req.URL.RequestURI())
 		if w != nil {
 			w.Close()
 		}
