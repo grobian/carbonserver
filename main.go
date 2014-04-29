@@ -10,6 +10,7 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -299,6 +300,7 @@ func main() {
 	verbose := flag.Bool("v", false, "enable verbose logging")
 	debug := flag.Bool("vv", false, "enable more verbose (debug) logging")
 	whisperdata := flag.String("w", config.WhisperData, "location where whisper files are stored")
+	maxprocs := flag.Int("maxprocs", runtime.NumCPU() * 80 / 100, "GOMAXPROCS")
 
 	flag.Parse()
 
@@ -313,6 +315,9 @@ func main() {
 
 	config.WhisperData = *whisperdata
 	log.Infof("reading whisper files from: %s", config.WhisperData)
+
+	runtime.GOMAXPROCS(*maxprocs)
+	log.Infof("set GOMAXPROCS=%d", *maxprocs)
 
 	http.HandleFunc("/metrics/find/", findHandler)
 	http.HandleFunc("/render/", fetchHandler)
