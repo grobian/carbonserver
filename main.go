@@ -86,7 +86,6 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 	 * - carbon.re      -> carbon.relays, carbon.rewhatever
 	 * - carbon.[rz]    -> carbon.relays, carbon.zipper
 	 * - carbon.{re,zi} -> carbon.relays, carbon.zipper
-	 * - implicit * at the end of each query
 	 * - match is either dir or .wsp file
 	 * unfortunately, filepath.Glob doesn't handle the curly brace
 	 * expansion for us */
@@ -104,14 +103,14 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 		parts := strings.Split(expansion, ",")
 		for _, sub := range parts {
 			sglob := glob[:lbrace] + sub + glob[rbrace+1:]
-			path := config.WhisperData + "/" + strings.Replace(sglob, ".", "/", -1) + "*"
+			path := config.WhisperData + "/" + strings.Replace(sglob, ".", "/", -1)
 			nfiles, err := filepath.Glob(path)
 			if err == nil {
 				files = append(files, nfiles...)
 			}
 		}
 	} else {
-		path := config.WhisperData + "/" + strings.Replace(glob, ".", "/", -1) + "*"
+		path := config.WhisperData + "/" + strings.Replace(glob, ".", "/", -1)
 		nfiles, err := filepath.Glob(path)
 		if err == nil {
 			files = append(files, nfiles...)
@@ -300,7 +299,7 @@ func main() {
 	verbose := flag.Bool("v", false, "enable verbose logging")
 	debug := flag.Bool("vv", false, "enable more verbose (debug) logging")
 	whisperdata := flag.String("w", config.WhisperData, "location where whisper files are stored")
-	maxprocs := flag.Int("maxprocs", runtime.NumCPU() * 80 / 100, "GOMAXPROCS")
+	maxprocs := flag.Int("maxprocs", runtime.NumCPU()*80/100, "GOMAXPROCS")
 
 	flag.Parse()
 
