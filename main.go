@@ -23,8 +23,10 @@ import (
 var config = struct {
 	WhisperData  string
 	GraphiteHost string
+	MaxGlobs     int
 }{
 	WhisperData: "/var/lib/carbon/whisper",
+	MaxGlobs:    10,
 }
 
 // grouped expvars for /debug/vars and graphite
@@ -62,8 +64,8 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 	Metrics.FindRequests.Add(1)
 
 	req.ParseForm()
-	glob := req.FormValue("query")
 	format := req.FormValue("format")
+	query := req.FormValue("query")
 
 	if format != "json" && format != "pickle" {
 		Metrics.FindErrors.Add(1)
@@ -74,7 +76,7 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if glob == "" {
+	if query == "" {
 		Metrics.FindErrors.Add(1)
 		log.Warnf("dropping invalid request (query=): %s", req.URL.RequestURI())
 		http.Error(wr, "Bad request (no query)", http.StatusBadRequest)
@@ -89,29 +91,53 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 	 * - match is either dir or .wsp file
 	 * unfortunately, filepath.Glob doesn't handle the curly brace
 	 * expansion for us */
-	lbrace := strings.Index(glob, "{")
-	rbrace := -1
-	if lbrace > -1 {
-		rbrace = strings.Index(glob[lbrace:], "}")
-		if rbrace > -1 {
-			rbrace += lbrace
-		}
+
+	query = strings.Replace(query, ".", "/", -1)
+
+	var globs []string
+	if !strings.HasSuffix(query, "*") {
+		globs = append(globs, query+".wsp")
 	}
-	var files []string
-	if lbrace > -1 && rbrace > -1 {
-		expansion := glob[lbrace+1 : rbrace]
-		parts := strings.Split(expansion, ",")
-		for _, sub := range parts {
-			sglob := glob[:lbrace] + sub + glob[rbrace+1:]
-			path := config.WhisperData + "/" + strings.Replace(sglob, ".", "/", -1)
-			nfiles, err := filepath.Glob(path)
-			if err == nil {
-				files = append(files, nfiles...)
+	globs = append(globs, query)
+	for {
+		bracematch := false
+		var newglobs []string
+		for _, glob := range globs {
+			lbrace := strings.Index(glob, "{")
+			rbrace := -1
+			if lbrace > -1 {
+				rbrace = strings.Index(glob[lbrace:], "}")
+				if rbrace > -1 {
+					rbrace += lbrace
+				}
+			}
+
+			if lbrace > -1 && rbrace > -1 {
+				bracematch = true
+				expansion := glob[lbrace+1 : rbrace]
+				parts := strings.Split(expansion, ",")
+				for _, sub := range parts {
+					if len(newglobs) > config.MaxGlobs {
+						break
+					}
+					newglobs = append(newglobs, glob[:lbrace]+sub+glob[rbrace+1:])
+				}
+			} else {
+				if len(newglobs) > config.MaxGlobs {
+					break
+				}
+				newglobs = append(newglobs, glob)
 			}
 		}
-	} else {
-		path := config.WhisperData + "/" + strings.Replace(glob, ".", "/", -1)
-		nfiles, err := filepath.Glob(path)
+		globs = newglobs
+		if !bracematch {
+			break
+		}
+	}
+
+	var files []string
+	for _, glob := range globs {
+		nfiles, err := filepath.Glob(config.WhisperData + "/" + glob)
 		if err == nil {
 			files = append(files, nfiles...)
 		}
@@ -131,7 +157,7 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 
 	if format == "json" {
 		response := WhisperGlobResponse{
-			Name:  glob,
+			Name:  req.FormValue("query"),
 			Paths: make([]string, 0),
 		}
 		for _, p := range files {
@@ -140,7 +166,8 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 		b, err := json.Marshal(response)
 		if err != nil {
 			Metrics.FindErrors.Add(1)
-			log.Errorf("failed to create JSON data for glob %s: %s", glob, err)
+			log.Errorf("failed to create JSON data for glob %s: %s",
+				response.Name, err)
 			return
 		}
 		wr.Write(b)
@@ -161,7 +188,7 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 		pEnc := pickle.NewEncoder(wr)
 		pEnc.Encode(metrics)
 	}
-	log.Infof("find: %d hits for %s", len(files), glob)
+	log.Infof("find: %d hits for %s", len(files), req.FormValue("query"))
 	return
 }
 
