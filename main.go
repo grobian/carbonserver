@@ -33,11 +33,13 @@ var config = struct {
 var Metrics = struct {
 	RenderRequests *expvar.Int
 	RenderErrors   *expvar.Int
+	NotFound       *expvar.Int
 	FindRequests   *expvar.Int
 	FindErrors     *expvar.Int
 }{
 	RenderRequests: expvar.NewInt("render_requests"),
 	RenderErrors:   expvar.NewInt("render_errors"),
+	NotFound:       expvar.NewInt("notfound"),
 	FindRequests:   expvar.NewInt("find_requests"),
 	FindErrors:     expvar.NewInt("find_errors"),
 }
@@ -215,7 +217,7 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 	w, err := whisper.Open(path)
 	if err != nil {
 		// the FE/carbonzipper often requests metrics we don't have
-		Metrics.RenderErrors.Add(1)
+		Metrics.NotFound.Add(1)
 		log.Debugf("failed to %s", err)
 		http.Error(wr, "Metric not found", http.StatusNotFound)
 		return
@@ -373,6 +375,8 @@ func main() {
 			hostname), Metrics.RenderRequests)
 		graphite.Register(fmt.Sprintf("carbon.server.%s.render_errors",
 			hostname), Metrics.RenderErrors)
+		graphite.Register(fmt.Sprintf("carbon.server.%s.notfound",
+			hostname), Metrics.NotFound)
 		graphite.Register(fmt.Sprintf("carbon.server.%s.find_requests",
 			hostname), Metrics.FindRequests)
 		graphite.Register(fmt.Sprintf("carbon.server.%s.find_errors",
