@@ -2,16 +2,14 @@ VERSION=0.6
 distdir=carbonserver-$(VERSION)
 
 carbonserver:
-	GOPATH=`pwd` go build -o $@
+	GOPATH=`pwd`/Godeps/_workspace go build -o carbonserver
 
 dist:
-	mkdir -p $(distdir)
-	git archive \
-		--format=tar.gz \
-		--prefix=$(distdir)/ v$(VERSION) \
-		| tar -zxf -
-	rsync -Ca src $(distdir)/
-	tar -zcf $(distdir).tar.gz $(distdir)
+	godep save
+	mkdir $(distdir)
+	mv Godeps $(distdir)
+	cp Makefile *.go $(distdir)
+	tar zvcf $(distdir).tar.gz $(distdir)
 	rm -rf $(distdir)
 
 clean:
