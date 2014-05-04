@@ -13,8 +13,10 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
+	"github.com/dgryski/httputil"
 	whisper "github.com/grobian/go-whisper"
 	pickle "github.com/kisielk/og-rek"
 	g2g "github.com/peterbourgon/g2g"
@@ -24,9 +26,11 @@ var config = struct {
 	WhisperData  string
 	GraphiteHost string
 	MaxGlobs     int
+	Buckets      int
 }{
 	WhisperData: "/var/lib/carbon/whisper",
 	MaxGlobs:    10,
+	Buckets:     10,
 }
 
 // grouped expvars for /debug/vars and graphite
@@ -347,8 +351,14 @@ func main() {
 	runtime.GOMAXPROCS(*maxprocs)
 	log.Infof("set GOMAXPROCS=%d", *maxprocs)
 
-	http.HandleFunc("/metrics/find/", findHandler)
-	http.HandleFunc("/render/", fetchHandler)
+	httputil.PublishTrackedConnections("httptrack")
+	expvar.Publish("requestBuckets", expvar.Func(renderTimeBuckets))
+
+	// +1 to track every over the number of buckets we track
+	timeBuckets = make([]int64, config.Buckets+1)
+
+	http.HandleFunc("/metrics/find/", httputil.TrackConnections(httputil.TimeHandler(findHandler, bucketRequestTimes)))
+	http.HandleFunc("/render/", httputil.TrackConnections(httputil.TimeHandler(fetchHandler, bucketRequestTimes)))
 
 	// nothing in the config? check the environment
 	if config.GraphiteHost == "" {
@@ -456,4 +466,35 @@ func (l *outputLogger) Fatalf(format string, a ...interface{}) {
 		l.err.WriteString(fmt.Sprintf("ERROR: "+format+"\n", a...))
 	}
 	os.Exit(1)
+}
+
+var timeBuckets []int64
+
+type bucketEntry int
+
+func (b bucketEntry) String() string {
+	return strconv.Itoa(int(atomic.LoadInt64(&timeBuckets[b])))
+}
+
+func renderTimeBuckets() interface{} {
+	return timeBuckets
+}
+
+func bucketRequestTimes(req *http.Request, t time.Duration) {
+
+	ms := t.Nanoseconds() / int64(time.Millisecond)
+
+	bucket := int(math.Log(float64(ms)) * math.Log10E)
+
+	if bucket < 0 {
+		bucket = 0
+	}
+
+	if bucket < config.Buckets {
+		atomic.AddInt64(&timeBuckets[bucket], 1)
+	} else {
+		// Too big? Increment overflow bucket and log
+		atomic.AddInt64(&timeBuckets[config.Buckets], 1)
+		log.Warnf("Slow Request: %s: %s", t.String(), req.URL.String())
+	}
 }
