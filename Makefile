@@ -1,4 +1,4 @@
-VERSION=0.6
+VERSION=0.7
 distdir=carbonserver-$(VERSION)
 
 carbonserver: Godeps
