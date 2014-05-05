@@ -265,6 +265,14 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 			http.StatusInternalServerError)
 		return
 	}
+
+	if points != nil {
+		Metrics.NotFound.Add(1)
+		log.Debugf("Metric time range not found: metric=%s from=%d to=%d ", metric, fromTime, untilTime)
+		http.Error(wr, "Metric time range not found", http.StatusNotFound)
+		return
+	}
+
 	values := points.Values()
 
 	if format == "json" {
