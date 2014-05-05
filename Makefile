@@ -2,7 +2,7 @@ VERSION=0.6
 distdir=carbonserver-$(VERSION)
 
 carbonserver:
-	GOPATH=`pwd`/Godeps go build -o carbonserver
+	GOPATH=`pwd`/Godeps go build -o $@
 
 dist:
 	godep save
