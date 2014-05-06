@@ -266,7 +266,7 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if points != nil {
+	if points == nil {
 		Metrics.NotFound.Add(1)
 		log.Debugf("Metric time range not found: metric=%s from=%d to=%d ", metric, fromTime, untilTime)
 		http.Error(wr, "Metric time range not found", http.StatusNotFound)
