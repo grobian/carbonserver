@@ -16,7 +16,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"code.google.com/p/gogoprotobuf/proto"
 	"github.com/dgryski/httputil"
+	pb "github.com/grobian/carbonserver/carbonserverpb"
 	whisper "github.com/grobian/go-whisper"
 	pickle "github.com/kisielk/og-rek"
 	g2g "github.com/peterbourgon/g2g"
@@ -46,20 +48,6 @@ var Metrics = struct {
 	NotFound:       expvar.NewInt("notfound"),
 	FindRequests:   expvar.NewInt("find_requests"),
 	FindErrors:     expvar.NewInt("find_errors"),
-}
-
-type WhisperFetchResponse struct {
-	Name      string    `json:"name"`
-	StartTime int       `json:"startTime"`
-	StopTime  int       `json:"stopTime"`
-	StepTime  int       `json:"stepTime"`
-	Values    []float64 `json:"values"`
-	IsAbsent  []bool    `json:"isAbsent"`
-}
-
-type WhisperGlobResponse struct {
-	Name  string   `json:"name"`
-	Paths []string `json:"paths"`
 }
 
 var log Logger
@@ -161,19 +149,28 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 		files[i] = strings.Replace(p, "/", ".", -1)
 	}
 
-	if format == "json" {
-		response := WhisperGlobResponse{
-			Name:  req.FormValue("query"),
+	if format == "json" || format == "protobuf" {
+		name := req.FormValue("query")
+		response := pb.GlobResponse{
+			Name:  &name,
 			Paths: make([]string, 0),
 		}
 		for _, p := range files {
 			response.Paths = append(response.Paths, p)
 		}
-		b, err := json.Marshal(response)
+
+		var b []byte
+		var err error
+		switch format {
+		case "json":
+			b, err = json.Marshal(response)
+		case "protobuf":
+			b, err = proto.Marshal(&response)
+		}
 		if err != nil {
 			Metrics.FindErrors.Add(1)
-			log.Errorf("failed to create JSON data for glob %s: %s",
-				response.Name, err)
+			log.Errorf("failed to create %s data for glob %s: %s",
+				format, response.Name, err)
 			return
 		}
 		wr.Write(b)
@@ -276,11 +273,14 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 	values := points.Values()
 
 	if format == "json" {
-		response := WhisperFetchResponse{
-			Name:      metric,
-			StartTime: points.FromTime(),
-			StopTime:  points.UntilTime(),
-			StepTime:  points.Step(),
+		fromTime := int32(points.FromTime())
+		untilTime := int32(points.UntilTime())
+		step := int32(points.Step())
+		response := pb.FetchResponse{
+			Name:      &metric,
+			StartTime: &fromTime,
+			StopTime:  &untilTime,
+			StepTime:  &step,
 			Values:    make([]float64, len(values)),
 			IsAbsent:  make([]bool, len(values)),
 		}
@@ -295,10 +295,17 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 			}
 		}
 
-		b, err := json.Marshal(response)
+		var b []byte
+		var err error
+		switch format {
+		case "json":
+			b, err = json.Marshal(response)
+		case "protobuf":
+			b, err = proto.Marshal(&response)
+		}
 		if err != nil {
 			Metrics.RenderErrors.Add(1)
-			log.Errorf("failed to create JSON data for %s: %s", path, err)
+			log.Errorf("failed to create %s data for %s: %s", format, path, err)
 			return
 		}
 		wr.Write(b)
