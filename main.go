@@ -61,7 +61,7 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 	format := req.FormValue("format")
 	query := req.FormValue("query")
 
-	if format != "json" && format != "pickle" {
+	if format != "json" && format != "pickle" && format != "protobuf" {
 		Metrics.FindErrors.Add(1)
 		log.Warnf("dropping invalid uri (format=%s): %s",
 			format, req.URL.RequestURI())
@@ -205,7 +205,7 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 	from := req.FormValue("from")
 	until := req.FormValue("until")
 
-	if format != "json" && format != "pickle" {
+	if format != "json" && format != "pickle" && format != "protobuf" {
 		Metrics.RenderErrors.Add(1)
 		log.Warnf("dropping invalid uri (format=%s): %s",
 			format, req.URL.RequestURI())
@@ -272,7 +272,7 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 
 	values := points.Values()
 
-	if format == "json" {
+	if format == "json" || format == "protobuf" {
 		fromTime := int32(points.FromTime())
 		untilTime := int32(points.UntilTime())
 		step := int32(points.Step())
