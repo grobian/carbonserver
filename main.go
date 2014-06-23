@@ -170,7 +170,7 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 		if err != nil {
 			Metrics.FindErrors.Add(1)
 			log.Errorf("failed to create %s data for glob %s: %s",
-				format, response.Name, err)
+				format, *response.Name, err)
 			return
 		}
 		wr.Write(b)
