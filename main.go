@@ -152,11 +152,12 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 	if format == "json" || format == "protobuf" {
 		name := req.FormValue("query")
 		response := pb.GlobResponse{
-			Name:  &name,
-			Paths: make([]string, 0),
+			Name:    &name,
+			Matches: make([]*pb.GlobMatch, 0),
 		}
-		for _, p := range files {
-			response.Paths = append(response.Paths, p)
+
+		for i, p := range files {
+			response.Matches = append(response.Matches, &pb.GlobMatch{Path: proto.String(p), IsLeaf: proto.Bool(leafs[i])})
 		}
 
 		var b []byte

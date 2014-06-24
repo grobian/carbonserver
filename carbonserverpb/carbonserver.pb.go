@@ -10,6 +10,7 @@ It is generated from these files:
 
 It has these top-level messages:
 	FetchResponse
+	GlobMatch
 	GlobResponse
 */
 package carbonserverpb
@@ -79,10 +80,34 @@ func (m *FetchResponse) GetIsAbsent() []bool {
 	return nil
 }
 
+type GlobMatch struct {
+	Path             *string `protobuf:"bytes,1,req,name=path" json:"path,omitempty"`
+	IsLeaf           *bool   `protobuf:"varint,2,req,name=isLeaf" json:"isLeaf,omitempty"`
+	XXX_unrecognized []byte  `json:"-"`
+}
+
+func (m *GlobMatch) Reset()         { *m = GlobMatch{} }
+func (m *GlobMatch) String() string { return proto.CompactTextString(m) }
+func (*GlobMatch) ProtoMessage()    {}
+
+func (m *GlobMatch) GetPath() string {
+	if m != nil && m.Path != nil {
+		return *m.Path
+	}
+	return ""
+}
+
+func (m *GlobMatch) GetIsLeaf() bool {
+	if m != nil && m.IsLeaf != nil {
+		return *m.IsLeaf
+	}
+	return false
+}
+
 type GlobResponse struct {
-	Name             *string  `protobuf:"bytes,1,req,name=name" json:"name,omitempty"`
-	Paths            []string `protobuf:"bytes,2,rep,name=paths" json:"paths,omitempty"`
-	XXX_unrecognized []byte   `json:"-"`
+	Name             *string      `protobuf:"bytes,1,req,name=name" json:"name,omitempty"`
+	Matches          []*GlobMatch `protobuf:"bytes,2,rep,name=matches" json:"matches,omitempty"`
+	XXX_unrecognized []byte       `json:"-"`
 }
 
 func (m *GlobResponse) Reset()         { *m = GlobResponse{} }
@@ -96,9 +121,9 @@ func (m *GlobResponse) GetName() string {
 	return ""
 }
 
-func (m *GlobResponse) GetPaths() []string {
+func (m *GlobResponse) GetMatches() []*GlobMatch {
 	if m != nil {
-		return m.Paths
+		return m.Matches
 	}
 	return nil
 }
