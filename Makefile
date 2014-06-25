@@ -1,20 +1,17 @@
 VERSION=0.8
 distdir=carbonserver-$(VERSION)
 
-carbonserver: Godeps
-	GOPATH=`pwd`/Godeps go build -o $@
+carbonserver:
+	GOPATH=`pwd` go build github.com/grobian/carbonserver
 
-dist: Godeps
-	godep save
-	mkdir $(distdir)
-	mv Godeps $(distdir)
-	cp Makefile *.go $(distdir)
+dist:
+	mkdir -p GOPATH
+	GOPATH=`pwd`/GOPATH go get -v -d
+	git archive --prefix=github.com/grobian/carbonserver/ master |tar xv -C GOPATH/src
+	cp Makefile GOPATH
+	mv GOPATH $(distdir)
 	tar zvcf $(distdir).tar.gz $(distdir)
 	rm -rf $(distdir)
-
-Godeps:
-	mkdir -p Godeps
-	GOPATH=`pwd`/Godeps go get -d
 
 clean:
 	rm -rf carbonserver $(distdir).tar.gz
