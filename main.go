@@ -407,6 +407,10 @@ func main() {
 			hostname), Metrics.FindRequests)
 		graphite.Register(fmt.Sprintf("carbon.server.%s.find_errors",
 			hostname), Metrics.FindErrors)
+
+		for i := 0; i <= config.Buckets; i++ {
+			graphite.Register(fmt.Sprintf("carbon.server.%s.requests_in_%dms_to_%dms", hostname, i*100, (i+1)*100), bucketEntry(i))
+		}
 	}
 
 	listen := fmt.Sprintf(":%d", *port)
