@@ -20,3 +20,16 @@ message GlobResponse {
     required string name = 1;
     repeated GlobMatch matches = 2;
 }
+
+message Retention {
+	required int32 secondsPerPoint = 1;
+	required int32 numberOfPoints = 2;
+}
+
+message InfoResponse {
+	required string name = 1;
+	required string aggregationMethod = 2;
+	required int32 maxRetention = 3;
+	required float xFilesFactor = 4;
+	repeated Retention retentions = 5;
+}

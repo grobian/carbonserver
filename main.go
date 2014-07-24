@@ -42,12 +42,16 @@ var Metrics = struct {
 	NotFound       *expvar.Int
 	FindRequests   *expvar.Int
 	FindErrors     *expvar.Int
+	InfoRequests   *expvar.Int
+	InfoErrors     *expvar.Int
 }{
 	RenderRequests: expvar.NewInt("render_requests"),
 	RenderErrors:   expvar.NewInt("render_errors"),
 	NotFound:       expvar.NewInt("notfound"),
 	FindRequests:   expvar.NewInt("find_requests"),
 	FindErrors:     expvar.NewInt("find_errors"),
+	InfoRequests:   expvar.NewInt("info_requests"),
+	InfoErrors:     expvar.NewInt("info_errors"),
 }
 
 var log Logger
@@ -343,6 +347,73 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 	return
 }
 
+func infoHandler(wr http.ResponseWriter, req *http.Request) {
+	// URL: /info/?target=the.metric.name&format=json
+
+	//	Metrics.InfoRequests.Add(1)
+	req.ParseForm()
+	metric := req.FormValue("target")
+	format := req.FormValue("format")
+
+	if format != "json" {
+		//		Metrics.InfoErrors.Add(1)
+		log.Warnf("dropping invalid uri (format=%s): %s",
+			format, req.URL.RequestURI())
+		http.Error(wr, "Bad request (unsupported format)",
+			http.StatusBadRequest)
+		return
+	}
+
+	path := config.WhisperData + "/" + strings.Replace(metric, ".", "/", -1) + ".wsp"
+	w, err := whisper.Open(path)
+	if err != nil {
+		//		Metrics.NotFound.Add(1)
+		log.Debugf("failed to %s", err)
+		http.Error(wr, "Metric not found", http.StatusNotFound)
+		return
+	}
+
+	if format == "json" || format == "protobuf" {
+		aggr := w.AggregationMethod()
+		maxr := int32(w.MaxRetention())
+		xfiles := float32(w.XFilesFactor())
+		rets := make([]*pb.Retention, 0, 4)
+		for _, retention := range w.Retentions() {
+			spp := int32(retention.SecondsPerPoint())
+			nop := int32(retention.NumberOfPoints())
+			rets = append(rets, &pb.Retention{
+				SecondsPerPoint: &spp,
+				NumberOfPoints:  &nop,
+			})
+		}
+		response := pb.InfoResponse{
+			Name:              &metric,
+			AggregationMethod: &aggr,
+			MaxRetention:      &maxr,
+			XFilesFactor:      &xfiles,
+			Retentions:        rets,
+		}
+
+		var b []byte
+		var err error
+		switch format {
+		case "json":
+			b, err = json.Marshal(response)
+		case "protobuf":
+			b, err = proto.Marshal(&response)
+		}
+		if err != nil {
+			Metrics.RenderErrors.Add(1)
+			log.Errorf("failed to create %s data for %s: %s", format, path, err)
+			return
+		}
+		wr.Write(b)
+	}
+
+	log.Infof("served info for %s", metric)
+	return
+}
+
 func main() {
 	port := flag.Int("p", 8080, "port to bind to")
 	verbose := flag.Bool("v", false, "enable verbose logging")
@@ -375,6 +446,7 @@ func main() {
 
 	http.HandleFunc("/metrics/find/", httputil.TrackConnections(httputil.TimeHandler(findHandler, bucketRequestTimes)))
 	http.HandleFunc("/render/", httputil.TrackConnections(httputil.TimeHandler(fetchHandler, bucketRequestTimes)))
+	http.HandleFunc("/info/", httputil.TrackConnections(httputil.TimeHandler(infoHandler, bucketRequestTimes)))
 
 	// nothing in the config? check the environment
 	if config.GraphiteHost == "" {
