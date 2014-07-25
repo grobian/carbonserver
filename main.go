@@ -350,13 +350,13 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 func infoHandler(wr http.ResponseWriter, req *http.Request) {
 	// URL: /info/?target=the.metric.name&format=json
 
-	//	Metrics.InfoRequests.Add(1)
+	Metrics.InfoRequests.Add(1)
 	req.ParseForm()
 	metric := req.FormValue("target")
 	format := req.FormValue("format")
 
 	if format != "json" {
-		//		Metrics.InfoErrors.Add(1)
+		Metrics.InfoErrors.Add(1)
 		log.Warnf("dropping invalid uri (format=%s): %s",
 			format, req.URL.RequestURI())
 		http.Error(wr, "Bad request (unsupported format)",
@@ -367,7 +367,7 @@ func infoHandler(wr http.ResponseWriter, req *http.Request) {
 	path := config.WhisperData + "/" + strings.Replace(metric, ".", "/", -1) + ".wsp"
 	w, err := whisper.Open(path)
 	if err != nil {
-		//		Metrics.NotFound.Add(1)
+		Metrics.NotFound.Add(1)
 		log.Debugf("failed to %s", err)
 		http.Error(wr, "Metric not found", http.StatusNotFound)
 		return
