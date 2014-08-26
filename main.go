@@ -17,8 +17,8 @@ import (
 	"time"
 
 	"code.google.com/p/gogoprotobuf/proto"
+	pb "github.com/dgryski/carbonzipper/carbonzipperpb"
 	"github.com/dgryski/httputil"
-	pb "github.com/grobian/carbonserver/carbonserverpb"
 	whisper "github.com/grobian/go-whisper"
 	pickle "github.com/kisielk/og-rek"
 	g2g "github.com/peterbourgon/g2g"
