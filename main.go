@@ -5,6 +5,8 @@ import (
 	"expvar"
 	"flag"
 	"fmt"
+	"io"
+	"log"
 	"math"
 	"net/http"
 	_ "net/http/pprof"
@@ -21,6 +23,7 @@ import (
 	"github.com/dgryski/httputil"
 	whisper "github.com/grobian/go-whisper"
 	pickle "github.com/kisielk/og-rek"
+	"github.com/lestrrat/go-file-rotatelogs"
 	g2g "github.com/peterbourgon/g2g"
 )
 
@@ -54,7 +57,7 @@ var Metrics = struct {
 	InfoErrors:     expvar.NewInt("info_errors"),
 }
 
-var log Logger
+var logger logLevel
 
 func findHandler(wr http.ResponseWriter, req *http.Request) {
 	// URL: /metrics/find/?local=1&format=pickle&query=the.metric.path.with.glob
@@ -67,7 +70,7 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 
 	if format != "json" && format != "pickle" && format != "protobuf" {
 		Metrics.FindErrors.Add(1)
-		log.Warnf("dropping invalid uri (format=%s): %s",
+		logger.Logf("dropping invalid uri (format=%s): %s",
 			format, req.URL.RequestURI())
 		http.Error(wr, "Bad request (unsupported format)",
 			http.StatusBadRequest)
@@ -76,7 +79,7 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 
 	if query == "" {
 		Metrics.FindErrors.Add(1)
-		log.Warnf("dropping invalid request (query=): %s", req.URL.RequestURI())
+		logger.Logf("dropping invalid request (query=): %s", req.URL.RequestURI())
 		http.Error(wr, "Bad request (no query)", http.StatusBadRequest)
 		return
 	}
@@ -174,7 +177,7 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 		}
 		if err != nil {
 			Metrics.FindErrors.Add(1)
-			log.Errorf("failed to create %s data for glob %s: %s",
+			logger.Logf("failed to create %s data for glob %s: %s",
 				format, *response.Name, err)
 			return
 		}
@@ -196,7 +199,7 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 		pEnc := pickle.NewEncoder(wr)
 		pEnc.Encode(metrics)
 	}
-	log.Infof("find: %d hits for %s", len(files), req.FormValue("query"))
+	logger.Debugf("find: %d hits for %s", len(files), req.FormValue("query"))
 	return
 }
 
@@ -212,7 +215,7 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 
 	if format != "json" && format != "pickle" && format != "protobuf" {
 		Metrics.RenderErrors.Add(1)
-		log.Warnf("dropping invalid uri (format=%s): %s",
+		logger.Logf("dropping invalid uri (format=%s): %s",
 			format, req.URL.RequestURI())
 		http.Error(wr, "Bad request (unsupported format)",
 			http.StatusBadRequest)
@@ -224,14 +227,14 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		// the FE/carbonzipper often requests metrics we don't have
 		Metrics.NotFound.Add(1)
-		log.Debugf("failed to %s", err)
+		logger.Debugf("failed to %s", err)
 		http.Error(wr, "Metric not found", http.StatusNotFound)
 		return
 	}
 
 	i, err := strconv.Atoi(from)
 	if err != nil {
-		log.Debugf("fromTime (%s) invalid: %s (in %s)",
+		logger.Debugf("fromTime (%s) invalid: %s (in %s)",
 			from, err, req.URL.RequestURI())
 		if w != nil {
 			w.Close()
@@ -241,7 +244,7 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 	fromTime := int(i)
 	i, err = strconv.Atoi(until)
 	if err != nil {
-		log.Debugf("untilTime (%s) invalid: %s (in %s)",
+		logger.Debugf("untilTime (%s) invalid: %s (in %s)",
 			from, err, req.URL.RequestURI())
 		if w != nil {
 			w.Close()
@@ -262,7 +265,7 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 	points, err := w.Fetch(fromTime, untilTime)
 	if err != nil {
 		Metrics.RenderErrors.Add(1)
-		log.Errorf("failed to fetch points from %s: %s", path, err)
+		logger.Logf("failed to fetch points from %s: %s", path, err)
 		http.Error(wr, "Fetching data points failed",
 			http.StatusInternalServerError)
 		return
@@ -270,7 +273,7 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 
 	if points == nil {
 		Metrics.NotFound.Add(1)
-		log.Debugf("Metric time range not found: metric=%s from=%d to=%d ", metric, fromTime, untilTime)
+		logger.Debugf("Metric time range not found: metric=%s from=%d to=%d ", metric, fromTime, untilTime)
 		http.Error(wr, "Metric time range not found", http.StatusNotFound)
 		return
 	}
@@ -310,7 +313,7 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 		}
 		if err != nil {
 			Metrics.RenderErrors.Add(1)
-			log.Errorf("failed to create %s data for %s: %s", format, path, err)
+			logger.Logf("failed to create %s data for %s: %s", format, path, err)
 			return
 		}
 		wr.Write(b)
@@ -343,7 +346,7 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 		pEnc.Encode(metrics)
 	}
 
-	log.Infof("served %d points for %s", len(values), metric)
+	logger.Debugf("served %d points for %s", len(values), metric)
 	return
 }
 
@@ -357,7 +360,7 @@ func infoHandler(wr http.ResponseWriter, req *http.Request) {
 
 	if format != "json" {
 		Metrics.InfoErrors.Add(1)
-		log.Warnf("dropping invalid uri (format=%s): %s",
+		logger.Logf("dropping invalid uri (format=%s): %s",
 			format, req.URL.RequestURI())
 		http.Error(wr, "Bad request (unsupported format)",
 			http.StatusBadRequest)
@@ -368,7 +371,7 @@ func infoHandler(wr http.ResponseWriter, req *http.Request) {
 	w, err := whisper.Open(path)
 	if err != nil {
 		Metrics.NotFound.Add(1)
-		log.Debugf("failed to %s", err)
+		logger.Debugf("failed to %s", err)
 		http.Error(wr, "Metric not found", http.StatusNotFound)
 		return
 	}
@@ -404,13 +407,13 @@ func infoHandler(wr http.ResponseWriter, req *http.Request) {
 		}
 		if err != nil {
 			Metrics.RenderErrors.Add(1)
-			log.Errorf("failed to create %s data for %s: %s", format, path, err)
+			logger.Logf("failed to create %s data for %s: %s", format, path, err)
 			return
 		}
 		wr.Write(b)
 	}
 
-	log.Infof("served info for %s", metric)
+	logger.Debugf("served info for %s", metric)
 	return
 }
 
@@ -420,23 +423,37 @@ func main() {
 	debug := flag.Bool("vv", false, "enable more verbose (debug) logging")
 	whisperdata := flag.String("w", config.WhisperData, "location where whisper files are stored")
 	maxprocs := flag.Int("maxprocs", runtime.NumCPU()*80/100, "GOMAXPROCS")
+	logdir := flag.String("logdir", "/var/log/carbonserver/", "logging directory")
+	logtostdout := flag.Bool("stdout", false, "log also to stdout")
 
-	flag.Parse()
+	rl := rotatelogs.NewRotateLogs(
+		*logdir + "/carbonserver.%Y%m%d%H%M.log",
+	)
 
-	loglevel := WARN
+	// Optional fields must be set afterwards
+	rl.LinkName = *logdir + "/carbonserver.log"
+
+	if *logtostdout {
+		log.SetOutput(io.MultiWriter(os.Stdout, rl))
+	} else {
+		log.SetOutput(rl)
+	}
+
+	loglevel := LOG_NORMAL
 	if *verbose {
-		loglevel = INFO
+		loglevel = LOG_DEBUG
 	}
 	if *debug {
-		loglevel = DEBUG
+		loglevel = LOG_TRACE
 	}
-	log = NewOutputLogger(loglevel)
+
+	logger = logLevel(loglevel)
 
 	config.WhisperData = *whisperdata
-	log.Infof("reading whisper files from: %s", config.WhisperData)
+	logger.Logf("reading whisper files from: %s", config.WhisperData)
 
 	runtime.GOMAXPROCS(*maxprocs)
-	log.Infof("set GOMAXPROCS=%d", *maxprocs)
+	logger.Logf("set GOMAXPROCS=%d", *maxprocs)
 
 	httputil.PublishTrackedConnections("httptrack")
 	expvar.Publish("requestBuckets", expvar.Func(renderTimeBuckets))
@@ -458,7 +475,7 @@ func main() {
 	// only register g2g if we have a graphite host
 	if config.GraphiteHost != "" {
 
-		log.Infof("Using graphite host %v", config.GraphiteHost)
+		logger.Logf("Using graphite host %v", config.GraphiteHost)
 
 		// register our metrics with graphite
 		graphite, err := g2g.NewGraphite(config.GraphiteHost, 60*time.Second, 10*time.Second)
@@ -486,78 +503,51 @@ func main() {
 	}
 
 	listen := fmt.Sprintf(":%d", *port)
-	log.Infof("listening on %s", listen)
+	logger.Logf("listening on %s", listen)
 	err := http.ListenAndServe(listen, nil)
 	if err != nil {
 		log.Fatalf("%s", err)
 	}
-	log.Infof("stopped")
+	logger.Logf("stopped")
 }
 
-// Logger is a wrapper to enable/disable lots of spam
-type Logger interface {
-	Infof(format string, a ...interface{})
-	Warnf(format string, a ...interface{})
-	Errorf(format string, a ...interface{})
-	Fatalf(format string, a ...interface{})
-	Debugf(format string, a ...interface{})
-}
+type logLevel int
 
-type LogLevel int
-
-// Logging levels
 const (
-	FATAL LogLevel = iota
-	ERROR
-	WARN
-	INFO
-	DEBUG
+	LOG_NORMAL logLevel = iota
+	LOG_DEBUG
+	LOG_TRACE
 )
 
-type outputLogger struct {
-	level LogLevel
-	out   *os.File
-	err   *os.File
-}
-
-func NewOutputLogger(level LogLevel) *outputLogger {
-	r := new(outputLogger)
-	r.level = level
-	r.out = os.Stdout
-	r.err = os.Stderr
-
-	return r
-}
-
-func (l *outputLogger) Debugf(format string, a ...interface{}) {
-	if l.level >= DEBUG {
-		l.out.WriteString(fmt.Sprintf("DEBUG: "+format+"\n", a...))
+func (ll logLevel) Debugf(format string, a ...interface{}) {
+	if ll >= LOG_DEBUG {
+		log.Printf(format, a...)
 	}
 }
 
-func (l *outputLogger) Infof(format string, a ...interface{}) {
-	if l.level >= INFO {
-		l.out.WriteString(fmt.Sprintf("INFO: "+format+"\n", a...))
+func (ll logLevel) Debugln(a ...interface{}) {
+	if ll >= LOG_DEBUG {
+		log.Println(a...)
 	}
 }
 
-func (l *outputLogger) Warnf(format string, a ...interface{}) {
-	if l.level >= WARN {
-		l.out.WriteString(fmt.Sprintf("WARN: "+format+"\n", a...))
+func (ll logLevel) Tracef(format string, a ...interface{}) {
+	if ll >= LOG_TRACE {
+		log.Printf(format, a...)
 	}
 }
 
-func (l *outputLogger) Errorf(format string, a ...interface{}) {
-	if l.level >= ERROR {
-		l.err.WriteString(fmt.Sprintf("ERROR: "+format+"\n", a...))
+func (ll logLevel) Traceln(a ...interface{}) {
+	if ll >= LOG_TRACE {
+		log.Println(a...)
 	}
 }
+func (ll logLevel) Logln(a ...interface{}) {
+	log.Println(a...)
+}
 
-func (l *outputLogger) Fatalf(format string, a ...interface{}) {
-	if l.level >= FATAL {
-		l.err.WriteString(fmt.Sprintf("ERROR: "+format+"\n", a...))
-	}
-	os.Exit(1)
+func (ll logLevel) Logf(format string, a ...interface{}) {
+	log.Printf(format, a...)
 }
 
 var timeBuckets []int64
@@ -587,6 +577,6 @@ func bucketRequestTimes(req *http.Request, t time.Duration) {
 	} else {
 		// Too big? Increment overflow bucket and log
 		atomic.AddInt64(&timeBuckets[config.Buckets], 1)
-		log.Warnf("Slow Request: %s: %s", t.String(), req.URL.String())
+		logger.Logf("Slow Request: %s: %s", t.String(), req.URL.String())
 	}
 }
