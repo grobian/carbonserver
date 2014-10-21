@@ -213,6 +213,15 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 	from := req.FormValue("from")
 	until := req.FormValue("until")
 
+	// Make sure we log which metric caused a panic()
+	defer func() {
+		if r := recover(); r != nil {
+			var buf [1024]byte
+			runtime.Stack(buf[:], false)
+			logger.Logf("panic handling request: %s\n%s\n", req.RequestURI, string(buf[:]))
+		}
+	}()
+
 	if format != "json" && format != "pickle" && format != "protobuf" {
 		Metrics.RenderErrors.Add(1)
 		logger.Logf("dropping invalid uri (format=%s): %s",
