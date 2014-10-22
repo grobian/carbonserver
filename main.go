@@ -57,6 +57,8 @@ var Metrics = struct {
 	InfoErrors:     expvar.NewInt("info_errors"),
 }
 
+var BuildVersion string = "(development build)"
+
 var logger logLevel
 
 func findHandler(wr http.ResponseWriter, req *http.Request) {
@@ -447,6 +449,9 @@ func main() {
 	} else {
 		log.SetOutput(rl)
 	}
+
+	expvar.NewString("BuildVersion").Set(BuildVersion)
+	log.Println("starting carbonserver", BuildVersion)
 
 	loglevel := LOG_NORMAL
 	if *verbose {
