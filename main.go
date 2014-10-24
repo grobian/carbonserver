@@ -205,7 +205,7 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 	}
 
 	if len(files) == 0 {
-		// to get an idea how often we seach for nothing
+		// to get an idea how often we search for nothing
 		Metrics.FindZero.Add(1)
 	}
 
