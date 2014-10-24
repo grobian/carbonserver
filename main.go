@@ -45,6 +45,7 @@ var Metrics = struct {
 	NotFound       *expvar.Int
 	FindRequests   *expvar.Int
 	FindErrors     *expvar.Int
+	FindZero       *expvar.Int
 	InfoRequests   *expvar.Int
 	InfoErrors     *expvar.Int
 }{
@@ -53,6 +54,7 @@ var Metrics = struct {
 	NotFound:       expvar.NewInt("notfound"),
 	FindRequests:   expvar.NewInt("find_requests"),
 	FindErrors:     expvar.NewInt("find_errors"),
+	FindZero:       expvar.NewInt("find_zero"),
 	InfoRequests:   expvar.NewInt("info_requests"),
 	InfoErrors:     expvar.NewInt("info_errors"),
 }
@@ -201,6 +203,12 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 		pEnc := pickle.NewEncoder(wr)
 		pEnc.Encode(metrics)
 	}
+
+	if len(files) == 0 {
+		// to get an idea how often we seach for nothing
+		Metrics.FindZero.Add(1)
+	}
+
 	logger.Debugf("find: %d hits for %s", len(files), req.FormValue("query"))
 	return
 }
@@ -510,6 +518,8 @@ func main() {
 			hostname), Metrics.FindRequests)
 		graphite.Register(fmt.Sprintf("carbon.server.%s.find_errors",
 			hostname), Metrics.FindErrors)
+		graphite.Register(fmt.Sprintf("carbon.server.%s.find_zero",
+			hostname), Metrics.FindZero)
 
 		for i := 0; i <= config.Buckets; i++ {
 			graphite.Register(fmt.Sprintf("carbon.server.%s.requests_in_%dms_to_%dms", hostname, i*100, (i+1)*100), bucketEntry(i))
