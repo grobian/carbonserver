@@ -445,6 +445,8 @@ func main() {
 	logdir := flag.String("logdir", "/var/log/carbonserver/", "logging directory")
 	logtostdout := flag.Bool("stdout", false, "log also to stdout")
 
+	flag.Parse()
+
 	rl := rotatelogs.NewRotateLogs(
 		*logdir + "/carbonserver.%Y%m%d%H%M.log",
 	)
