@@ -13,13 +13,16 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
+	"unsafe"
 
 	"code.google.com/p/gogoprotobuf/proto"
 	pb "github.com/dgryski/carbonzipper/carbonzipperpb"
+	"github.com/dgryski/go-trigram"
 	"github.com/dgryski/httputil"
 	whisper "github.com/grobian/go-whisper"
 	pickle "github.com/kisielk/og-rek"
@@ -62,6 +65,54 @@ var Metrics = struct {
 var BuildVersion string = "(development build)"
 
 var logger logLevel
+
+type fileIndex struct {
+	idx   trigram.Index
+	files []string
+}
+
+var fileIdx unsafe.Pointer            // actual type is *fileIndex
+func CurrentFileIndex() *fileIndex    { return (*fileIndex)(atomic.LoadPointer(&fileIdx)) }
+func UpdateFileIndex(fidx *fileIndex) { atomic.StorePointer(&fileIdx, unsafe.Pointer(fidx)) }
+
+func fileListUpdater(dir string, tick <-chan time.Time, force <-chan struct{}) {
+
+	for {
+
+		select {
+		case <-tick:
+		case <-force:
+		}
+
+		var files []string
+
+		t0 := time.Now()
+
+		err := filepath.Walk(dir, func(p string, info os.FileInfo, err error) error {
+			if err != nil {
+				logger.Logf("error processing %q: %v\n", p, err)
+				return nil
+			}
+
+			if info.IsDir() || strings.HasSuffix(info.Name(), ".wsp") {
+				files = append(files, strings.TrimPrefix(p, config.WhisperData))
+			}
+
+			return nil
+		})
+
+		logger.Logln("file scan took", time.Since(t0), ",", len(files), "items")
+		t0 = time.Now()
+
+		idx := trigram.NewIndex(files)
+
+		logger.Logln("indexing took took", time.Since(t0), len(idx), "trigrams")
+
+		if err == nil {
+			UpdateFileIndex(&fileIndex{idx, files})
+		}
+	}
+}
 
 func findHandler(wr http.ResponseWriter, req *http.Request) {
 	// URL: /metrics/find/?local=1&format=pickle&query=the.metric.path.with.glob
@@ -141,11 +192,44 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 	}
 
 	var files []string
-	for _, glob := range globs {
-		nfiles, err := filepath.Glob(config.WhisperData + "/" + glob)
-		if err == nil {
-			files = append(files, nfiles...)
+
+	fidx := CurrentFileIndex()
+
+	if fidx == nil {
+		// no index -- hit the filesystem
+		for _, g := range globs {
+			nfiles, err := filepath.Glob(config.WhisperData + "/" + g)
+			if err == nil {
+				files = append(files, nfiles...)
+			}
 		}
+	} else {
+		// use the index
+		docs := make(map[int]struct{})
+
+		for _, g := range globs {
+
+			gpath := "/" + g
+
+			ts := extractTrigrams(g)
+
+			ids := fidx.idx.QueryTrigrams(ts)
+
+			for _, id := range ids {
+				if _, ok := docs[id]; !ok {
+					matched, err := filepath.Match(gpath, fidx.files[id])
+					if err == nil && matched {
+						docs[id] = struct{}{}
+					}
+				}
+			}
+		}
+
+		for id := range docs {
+			files = append(files, config.WhisperData+"/"+fidx.files[id])
+		}
+
+		sort.Strings(files)
 	}
 
 	leafs := make([]bool, len(files))
@@ -444,6 +528,7 @@ func main() {
 	maxprocs := flag.Int("maxprocs", runtime.NumCPU()*80/100, "GOMAXPROCS")
 	logdir := flag.String("logdir", "/var/log/carbonserver/", "logging directory")
 	logtostdout := flag.Bool("stdout", false, "log also to stdout")
+	scanFrequency := flag.Duration("scanfreq", 0, "file index scan frequency (0 to disable file index)")
 
 	flag.Parse()
 
@@ -475,6 +560,13 @@ func main() {
 
 	config.WhisperData = *whisperdata
 	logger.Logf("reading whisper files from: %s", config.WhisperData)
+
+	if *scanFrequency != 0 {
+		logger.Logln("use file cache with scan frequency", *scanFrequency)
+		force := make(chan struct{})
+		go fileListUpdater(*whisperdata, time.Tick(*scanFrequency), force)
+		force <- struct{}{}
+	}
 
 	runtime.GOMAXPROCS(*maxprocs)
 	logger.Logf("set GOMAXPROCS=%d", *maxprocs)
@@ -605,4 +697,35 @@ func bucketRequestTimes(req *http.Request, t time.Duration) {
 		atomic.AddInt64(&timeBuckets[config.Buckets], 1)
 		logger.Logf("Slow Request: %s: %s", t.String(), req.URL.String())
 	}
+}
+
+func extractTrigrams(query string) []trigram.T {
+
+	if len(query) < 3 {
+		return nil
+	}
+
+	var start int
+	var i int
+
+	var trigrams []trigram.T
+
+	for i < len(query) {
+		if query[i] == '[' || query[i] == '*' || query[i] == '?' {
+			trigrams = trigram.Extract(query[start:i], trigrams)
+
+			if query[i] == '[' {
+				for i < len(query) && query[i] != ']' {
+					i++
+				}
+			}
+
+			start = i + 1
+		}
+		i++
+	}
+
+	trigrams = trigram.Extract(query[start:i], trigrams)
+
+	return trigrams
 }
