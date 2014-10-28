@@ -226,7 +226,7 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 		}
 
 		for id := range docs {
-			files = append(files, config.WhisperData+"/"+fidx.files[id])
+			files = append(files, config.WhisperData+fidx.files[id])
 		}
 
 		sort.Strings(files)
