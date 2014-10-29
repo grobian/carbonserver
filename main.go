@@ -141,6 +141,12 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	var useGlob bool
+
+	if query == "*" {
+		useGlob = true
+	}
+
 	/* things to glob:
 	 * - carbon.relays  -> carbon.relays
 	 * - carbon.re      -> carbon.relays, carbon.rewhatever
@@ -197,7 +203,7 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 
 	fidx := CurrentFileIndex()
 
-	if fidx == nil {
+	if useGlob || fidx == nil {
 		// no index -- hit the filesystem
 		for _, g := range globs {
 			nfiles, err := filepath.Glob(config.WhisperData + "/" + g)
