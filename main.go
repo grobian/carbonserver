@@ -117,6 +117,8 @@ func fileListUpdater(dir string, tick <-chan time.Time, force <-chan struct{}) {
 func findHandler(wr http.ResponseWriter, req *http.Request) {
 	// URL: /metrics/find/?local=1&format=pickle&query=the.metric.path.with.glob
 
+	t0 := time.Now()
+
 	Metrics.FindRequests.Add(1)
 
 	req.ParseForm()
@@ -294,7 +296,7 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 		Metrics.FindZero.Add(1)
 	}
 
-	logger.Debugf("find: %d hits for %s", len(files), req.FormValue("query"))
+	logger.Logf("find: %d hits for %s in %v", len(files), req.FormValue("query"), time.Since(t0))
 	return
 }
 
