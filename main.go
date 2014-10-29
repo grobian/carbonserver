@@ -205,7 +205,7 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 		}
 	} else {
 		// use the index
-		docs := make(map[int]struct{})
+		docs := make(map[trigram.DocID]struct{})
 
 		for _, g := range globs {
 
@@ -216,10 +216,11 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 			ids := fidx.idx.QueryTrigrams(ts)
 
 			for _, id := range ids {
-				if _, ok := docs[id]; !ok {
+				docid := trigram.DocID(id)
+				if _, ok := docs[docid]; !ok {
 					matched, err := filepath.Match(gpath, fidx.files[id])
 					if err == nil && matched {
-						docs[id] = struct{}{}
+						docs[docid] = struct{}{}
 					}
 				}
 			}
