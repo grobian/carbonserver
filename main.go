@@ -296,7 +296,7 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 		Metrics.FindZero.Add(1)
 	}
 
-	logger.Logf("find: %d hits for %s in %v", len(files), req.FormValue("query"), time.Since(t0))
+	logger.Debugf("find: %d hits for %s in %v", len(files), req.FormValue("query"), time.Since(t0))
 	return
 }
 
