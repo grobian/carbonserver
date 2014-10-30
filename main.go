@@ -567,7 +567,7 @@ func main() {
 
 	logger = logLevel(loglevel)
 
-	config.WhisperData = *whisperdata
+	config.WhisperData = strings.TrimRight(*whisperdata, "/")
 	logger.Logf("reading whisper files from: %s", config.WhisperData)
 
 	if *scanFrequency != 0 {
