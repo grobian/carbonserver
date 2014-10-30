@@ -203,15 +203,7 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 
 	fidx := CurrentFileIndex()
 
-	if useGlob || fidx == nil {
-		// no index -- hit the filesystem
-		for _, g := range globs {
-			nfiles, err := filepath.Glob(config.WhisperData + "/" + g)
-			if err == nil {
-				files = append(files, nfiles...)
-			}
-		}
-	} else {
+	if fidx != nil && !useGlob {
 		// use the index
 		docs := make(map[trigram.DocID]struct{})
 
@@ -220,6 +212,9 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 			gpath := "/" + g
 
 			ts := extractTrigrams(g)
+
+			// TODO(dgryski): If we have 'not enough trigrams' we
+			// should bail and use the file-system glob instead
 
 			ids := fidx.idx.QueryTrigrams(ts)
 
@@ -239,6 +234,19 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 		}
 
 		sort.Strings(files)
+	}
+
+	// Not an 'else' clause because the trigram-searching code might want
+	// to fall back to the file-system glob
+
+	if useGlob || fidx == nil {
+		// no index or we were asked to hit the filesystem
+		for _, g := range globs {
+			nfiles, err := filepath.Glob(config.WhisperData + "/" + g)
+			if err == nil {
+				files = append(files, nfiles...)
+			}
+		}
 	}
 
 	leafs := make([]bool, len(files))
