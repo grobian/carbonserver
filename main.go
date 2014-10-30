@@ -163,6 +163,7 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 		globs = append(globs, query+".wsp")
 	}
 	globs = append(globs, query)
+	// TODO(dgryski): move this loop into its own function + add tests
 	for {
 		bracematch := false
 		var newglobs []string
