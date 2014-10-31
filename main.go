@@ -479,7 +479,11 @@ func infoHandler(wr http.ResponseWriter, req *http.Request) {
 	metric := req.FormValue("target")
 	format := req.FormValue("format")
 
-	if format != "json" {
+	if format == nil || format == "" {
+		format = "json"
+	}
+
+	if format != "json" && format != "protobuf" {
 		Metrics.InfoErrors.Add(1)
 		logger.Logf("dropping invalid uri (format=%s): %s",
 			format, req.URL.RequestURI())
