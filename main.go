@@ -479,7 +479,7 @@ func infoHandler(wr http.ResponseWriter, req *http.Request) {
 	metric := req.FormValue("target")
 	format := req.FormValue("format")
 
-	if format == nil || format == "" {
+	if format == "" {
 		format = "json"
 	}
 
