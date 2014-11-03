@@ -143,7 +143,7 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 
 	var useGlob bool
 
-	if query == "*" {
+	if star := strings.IndexByte(query, '*'); strings.IndexByte(query, '[') == -1 && strings.IndexByte(query, '?') == -1 && (star == -1 || star == len(query)-1) {
 		useGlob = true
 	}
 
