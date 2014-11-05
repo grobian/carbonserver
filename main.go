@@ -101,12 +101,12 @@ func fileListUpdater(dir string, tick <-chan time.Time, force <-chan struct{}) {
 			return nil
 		})
 
-		logger.Logln("file scan took", time.Since(t0), ",", len(files), "items")
+		logger.Debugln("file scan took", time.Since(t0), ",", len(files), "items")
 		t0 = time.Now()
 
 		idx := trigram.NewIndex(files)
 
-		logger.Logln("indexing took took", time.Since(t0), len(idx), "trigrams")
+		logger.Debugln("indexing took took", time.Since(t0), len(idx), "trigrams")
 
 		if err == nil {
 			UpdateFileIndex(&fileIndex{idx, files})
