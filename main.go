@@ -106,7 +106,11 @@ func fileListUpdater(dir string, tick <-chan time.Time, force <-chan struct{}) {
 
 		idx := trigram.NewIndex(files)
 
-		logger.Debugln("indexing took took", time.Since(t0), len(idx), "trigrams")
+		logger.Debugln("indexing took", time.Since(t0), len(idx), "trigrams")
+
+		pruned := idx.Prune(0.95)
+
+		logger.Debugln("pruned", pruned, "common trigrams")
 
 		if err == nil {
 			UpdateFileIndex(&fileIndex{idx, files})
