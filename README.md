@@ -17,13 +17,14 @@ optimal communication protocol that puts less strains on Go's memory
 usage and garbage collector.
 
 
-Author
-------
+Authors
+-------
 Fabian Groffen
+Damian Gryski
 
 
 Acknowledgement
 ---------------
 This program was originally developed for Booking.com.  With approval
 from Booking.com, the code was generalised and published as Open Source
-on github, for which the author would like to express his gratitude.
+on github, for which the authors would like to express their gratitude.
