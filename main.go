@@ -551,6 +551,7 @@ func main() {
 	verbose := flag.Bool("v", false, "enable verbose logging")
 	debug := flag.Bool("vv", false, "enable more verbose (debug) logging")
 	whisperdata := flag.String("w", config.WhisperData, "location where whisper files are stored")
+	maxglobs := flag.Int("maxexpand", config.MaxGlobs, "maximum expansion depth to perform on input via curly braces ({a,b,c})")
 	maxprocs := flag.Int("maxprocs", runtime.NumCPU()*80/100, "GOMAXPROCS")
 	logdir := flag.String("logdir", "/var/log/carbonserver/", "logging directory")
 	logtostdout := flag.Bool("stdout", false, "log also to stdout")
@@ -586,6 +587,9 @@ func main() {
 
 	config.WhisperData = strings.TrimRight(*whisperdata, "/")
 	logger.Logf("reading whisper files from: %s", config.WhisperData)
+
+	config.MaxGlobs = *maxglobs
+	logger.Logf("maximum brace expansion set to: %d", config.MaxGlobs)
 
 	if *scanFrequency != 0 {
 		logger.Logln("use file cache with scan frequency", *scanFrequency)
