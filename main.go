@@ -20,10 +20,10 @@ import (
 	"time"
 	"unsafe"
 
-	"code.google.com/p/gogoprotobuf/proto"
 	pb "github.com/dgryski/carbonzipper/carbonzipperpb"
 	"github.com/dgryski/go-trigram"
 	"github.com/dgryski/httputil"
+	"github.com/gogo/protobuf/proto"
 	whisper "github.com/grobian/go-whisper"
 	pickle "github.com/kisielk/og-rek"
 	"github.com/lestrrat/go-file-rotatelogs"
