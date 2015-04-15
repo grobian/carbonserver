@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"expvar"
 	"flag"
@@ -118,7 +119,7 @@ func fileListUpdater(dir string, tick <-chan time.Time, force <-chan struct{}) {
 	}
 }
 
-func expandGlobs(query string) []string {
+func expandGlobs(query string) ([]string, []bool) {
 	var useGlob bool
 
 	if star := strings.IndexByte(query, '*'); strings.IndexByte(query, '[') == -1 && strings.IndexByte(query, '?') == -1 && (star == -1 || star == len(query)-1) {
@@ -228,7 +229,19 @@ func expandGlobs(query string) []string {
 		}
 	}
 
-	return files
+	leafs := make([]bool, len(files))
+	for i, p := range files {
+		p = p[len(config.WhisperData+"/"):]
+		if strings.HasSuffix(p, ".wsp") {
+			p = p[:len(p)-4]
+			leafs[i] = true
+		} else {
+			leafs[i] = false
+		}
+		files[i] = strings.Replace(p, "/", ".", -1)
+	}
+
+	return files, leafs
 }
 
 func findHandler(wr http.ResponseWriter, req *http.Request) {
@@ -258,19 +271,7 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	files := expandGlobs(query)
-
-	leafs := make([]bool, len(files))
-	for i, p := range files {
-		p = p[len(config.WhisperData+"/"):]
-		if strings.HasSuffix(p, ".wsp") {
-			p = p[:len(p)-4]
-			leafs[i] = true
-		} else {
-			leafs[i] = false
-		}
-		files[i] = strings.Replace(p, "/", ".", -1)
-	}
+	files, leafs := expandGlobs(query)
 
 	if format == "json" || format == "protobuf" {
 		name := req.FormValue("query")
@@ -353,70 +354,68 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	path := config.WhisperData + "/" + strings.Replace(metric, ".", "/", -1) + ".wsp"
-	w, err := whisper.Open(path)
-	if err != nil {
-		// the FE/carbonzipper often requests metrics we don't have
-		Metrics.NotFound.Add(1)
-		logger.Debugf("failed to %s", err)
-		http.Error(wr, "Metric not found", http.StatusNotFound)
-		return
-	}
+	files, leafs := expandGlobs(metric)
+
+	var badTime bool
 
 	i, err := strconv.Atoi(from)
 	if err != nil {
-		logger.Debugf("fromTime (%s) invalid: %s (in %s)",
-			from, err, req.URL.RequestURI())
-		if w != nil {
-			w.Close()
-		}
-		w = nil
+		logger.Debugf("fromTime (%s) invalid: %s (in %s)", from, err, req.URL.RequestURI())
+		badTime = true
 	}
 	fromTime := int(i)
 	i, err = strconv.Atoi(until)
 	if err != nil {
-		logger.Debugf("untilTime (%s) invalid: %s (in %s)",
-			from, err, req.URL.RequestURI())
-		if w != nil {
-			w.Close()
-		}
-		w = nil
+		logger.Debugf("untilTime (%s) invalid: %s (in %s)", from, err, req.URL.RequestURI())
+		badTime = true
 	}
 	untilTime := int(i)
 
-	if w != nil {
-		defer w.Close()
-	} else {
+	if badTime {
 		Metrics.RenderErrors.Add(1)
-		http.Error(wr, "Bad request (invalid from/until time)",
-			http.StatusBadRequest)
+		http.Error(wr, "Bad request (invalid from/until time)", http.StatusBadRequest)
 		return
 	}
 
-	points, err := w.Fetch(fromTime, untilTime)
-	if err != nil {
-		Metrics.RenderErrors.Add(1)
-		logger.Logf("failed to fetch points from %s: %s", path, err)
-		http.Error(wr, "Fetching data points failed",
-			http.StatusInternalServerError)
-		return
-	}
+	var multi pb.MultiFetchResponse
+	for i, metric := range files {
 
-	if points == nil {
-		Metrics.NotFound.Add(1)
-		logger.Debugf("Metric time range not found: metric=%s from=%d to=%d ", metric, fromTime, untilTime)
-		http.Error(wr, "Metric time range not found", http.StatusNotFound)
-		return
-	}
+		if !leafs[i] {
+			log.Printf("skipping directory = %q\n", metric)
+			// can't fetch a directory
+			continue
+		}
 
-	values := points.Values()
+		path := config.WhisperData + "/" + strings.Replace(metric, ".", "/", -1) + ".wsp"
+		w, err := whisper.Open(path)
+		if err != nil {
+			// the FE/carbonzipper often requests metrics we don't have
+			// We shouldn't really see this any more -- expandGlobs() should filter them out
+			Metrics.NotFound.Add(1)
+			log.Printf("error opening %q: %v\n", path, err)
+			continue
+		}
 
-	if format == "json" || format == "protobuf" {
+		points, err := w.Fetch(fromTime, untilTime)
+		if err != nil {
+			Metrics.RenderErrors.Add(1)
+			logger.Logf("failed to fetch points from %s: %s", path, err)
+			continue
+		}
+
+		if points == nil {
+			Metrics.NotFound.Add(1)
+			logger.Debugf("Metric time range not found: metric=%s from=%d to=%d ", metric, fromTime, untilTime)
+			continue
+		}
+
+		values := points.Values()
+
 		fromTime := int32(points.FromTime())
 		untilTime := int32(points.UntilTime())
 		step := int32(points.Step())
 		response := pb.FetchResponse{
-			Name:      &metric,
+			Name:      proto.String(metric),
 			StartTime: &fromTime,
 			StopTime:  &untilTime,
 			StepTime:  &step,
@@ -434,50 +433,66 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 			}
 		}
 
-		var b []byte
-		var err error
-		switch format {
-		case "json":
-			b, err = json.Marshal(response)
-		case "protobuf":
-			b, err = proto.Marshal(&response)
-		}
-		if err != nil {
-			Metrics.RenderErrors.Add(1)
-			logger.Logf("failed to create %s data for %s: %s", format, path, err)
-			return
-		}
-		wr.Write(b)
-	} else if format == "pickle" {
-		//[{'start': 1396271100, 'step': 60, 'name': 'metric',
-		//'values': [9.0, 19.0, None], 'end': 1396273140}
-		var metrics []map[string]interface{}
-		var m map[string]interface{}
-
-		m = make(map[string]interface{})
-		m["start"] = points.FromTime()
-		m["step"] = points.Step()
-		m["end"] = points.UntilTime()
-		m["name"] = metric
-
-		mv := make([]interface{}, len(values))
-		for i, p := range values {
-			if math.IsNaN(p) {
-				mv[i] = nil
-			} else {
-				mv[i] = p
-			}
-		}
-
-		m["values"] = mv
-		metrics = append(metrics, m)
-
-		wr.Header().Set("Content-Type", "application/pickle")
-		pEnc := pickle.NewEncoder(wr)
-		pEnc.Encode(metrics)
+		multi.Metrics = append(multi.Metrics, &response)
 	}
 
-	logger.Debugf("served %d points for %s", len(values), metric)
+	var b []byte
+	switch format {
+	case "json":
+		wr.Header().Set("Content-Type", "application/json")
+		b, err = json.Marshal(multi)
+
+	case "protobuf":
+		wr.Header().Set("Content-Type", "application/protobuf")
+		b, err = proto.Marshal(&multi)
+		log.Printf("multi = %+v\n", multi)
+		log.Printf("err = %+v\n", err)
+
+	case "pickle":
+		// transform protobuf data into what pickle expects
+		//[{'start': 1396271100, 'step': 60, 'name': 'metric',
+		//'values': [9.0, 19.0, None], 'end': 1396273140}
+
+		var response []map[string]interface{}
+
+		for _, metric := range multi.GetMetrics() {
+
+			var m map[string]interface{}
+
+			m = make(map[string]interface{})
+			m["start"] = metric.StartTime
+			m["step"] = metric.StepTime
+			m["end"] = metric.StopTime
+			m["name"] = metric.Name
+
+			mv := make([]interface{}, len(metric.Values))
+			for i, p := range metric.Values {
+				if metric.IsAbsent[i] {
+					mv[i] = nil
+				} else {
+					mv[i] = p
+				}
+			}
+
+			m["values"] = mv
+			response = append(response, m)
+		}
+
+		wr.Header().Set("Content-Type", "application/pickle")
+		var buf bytes.Buffer
+		pEnc := pickle.NewEncoder(&buf)
+		err = pEnc.Encode(response)
+		b = buf.Bytes()
+	}
+
+	if err != nil {
+		Metrics.RenderErrors.Add(1)
+		logger.Logf("failed to create %s data for %s: %s", format, "<metric>", err)
+		return
+	}
+	wr.Write(b)
+
+	//logger.Debugf("served %d points for %s", len(values), metric)
 	return
 }
 
