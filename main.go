@@ -118,33 +118,7 @@ func fileListUpdater(dir string, tick <-chan time.Time, force <-chan struct{}) {
 	}
 }
 
-func findHandler(wr http.ResponseWriter, req *http.Request) {
-	// URL: /metrics/find/?local=1&format=pickle&query=the.metric.path.with.glob
-
-	t0 := time.Now()
-
-	Metrics.FindRequests.Add(1)
-
-	req.ParseForm()
-	format := req.FormValue("format")
-	query := req.FormValue("query")
-
-	if format != "json" && format != "pickle" && format != "protobuf" {
-		Metrics.FindErrors.Add(1)
-		logger.Logf("dropping invalid uri (format=%s): %s",
-			format, req.URL.RequestURI())
-		http.Error(wr, "Bad request (unsupported format)",
-			http.StatusBadRequest)
-		return
-	}
-
-	if query == "" {
-		Metrics.FindErrors.Add(1)
-		logger.Logf("dropping invalid request (query=): %s", req.URL.RequestURI())
-		http.Error(wr, "Bad request (no query)", http.StatusBadRequest)
-		return
-	}
-
+func expandGlobs(query string) []string {
 	var useGlob bool
 
 	if star := strings.IndexByte(query, '*'); strings.IndexByte(query, '[') == -1 && strings.IndexByte(query, '?') == -1 && (star == -1 || star == len(query)-1) {
@@ -253,6 +227,38 @@ func findHandler(wr http.ResponseWriter, req *http.Request) {
 			}
 		}
 	}
+
+	return files
+}
+
+func findHandler(wr http.ResponseWriter, req *http.Request) {
+	// URL: /metrics/find/?local=1&format=pickle&query=the.metric.path.with.glob
+
+	t0 := time.Now()
+
+	Metrics.FindRequests.Add(1)
+
+	req.ParseForm()
+	format := req.FormValue("format")
+	query := req.FormValue("query")
+
+	if format != "json" && format != "pickle" && format != "protobuf" {
+		Metrics.FindErrors.Add(1)
+		logger.Logf("dropping invalid uri (format=%s): %s",
+			format, req.URL.RequestURI())
+		http.Error(wr, "Bad request (unsupported format)",
+			http.StatusBadRequest)
+		return
+	}
+
+	if query == "" {
+		Metrics.FindErrors.Add(1)
+		logger.Logf("dropping invalid request (query=): %s", req.URL.RequestURI())
+		http.Error(wr, "Bad request (no query)", http.StatusBadRequest)
+		return
+	}
+
+	files := expandGlobs(query)
 
 	leafs := make([]bool, len(files))
 	for i, p := range files {
