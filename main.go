@@ -445,8 +445,6 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 	case "protobuf":
 		wr.Header().Set("Content-Type", "application/protobuf")
 		b, err = proto.Marshal(&multi)
-		log.Printf("multi = %+v\n", multi)
-		log.Printf("err = %+v\n", err)
 
 	case "pickle":
 		// transform protobuf data into what pickle expects
