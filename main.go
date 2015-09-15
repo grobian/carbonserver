@@ -524,42 +524,39 @@ func infoHandler(wr http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if format == "json" || format == "protobuf" {
-		aggr := w.AggregationMethod()
-		maxr := int32(w.MaxRetention())
-		xfiles := float32(w.XFilesFactor())
-		rets := make([]*pb.Retention, 0, 4)
-		for _, retention := range w.Retentions() {
-			spp := int32(retention.SecondsPerPoint())
-			nop := int32(retention.NumberOfPoints())
-			rets = append(rets, &pb.Retention{
-				SecondsPerPoint: &spp,
-				NumberOfPoints:  &nop,
-			})
-		}
-		response := pb.InfoResponse{
-			Name:              &metric,
-			AggregationMethod: &aggr,
-			MaxRetention:      &maxr,
-			XFilesFactor:      &xfiles,
-			Retentions:        rets,
-		}
-
-		var b []byte
-		var err error
-		switch format {
-		case "json":
-			b, err = json.Marshal(response)
-		case "protobuf":
-			b, err = proto.Marshal(&response)
-		}
-		if err != nil {
-			Metrics.RenderErrors.Add(1)
-			logger.Logf("failed to create %s data for %s: %s", format, path, err)
-			return
-		}
-		wr.Write(b)
+	aggr := w.AggregationMethod()
+	maxr := int32(w.MaxRetention())
+	xfiles := float32(w.XFilesFactor())
+	rets := make([]*pb.Retention, 0, 4)
+	for _, retention := range w.Retentions() {
+		spp := int32(retention.SecondsPerPoint())
+		nop := int32(retention.NumberOfPoints())
+		rets = append(rets, &pb.Retention{
+			SecondsPerPoint: &spp,
+			NumberOfPoints:  &nop,
+		})
 	}
+	response := pb.InfoResponse{
+		Name:              &metric,
+		AggregationMethod: &aggr,
+		MaxRetention:      &maxr,
+		XFilesFactor:      &xfiles,
+		Retentions:        rets,
+	}
+
+	var b []byte
+	switch format {
+	case "json":
+		b, err = json.Marshal(response)
+	case "protobuf":
+		b, err = proto.Marshal(&response)
+	}
+	if err != nil {
+		Metrics.RenderErrors.Add(1)
+		logger.Logf("failed to create %s data for %s: %s", format, path, err)
+		return
+	}
+	wr.Write(b)
 
 	logger.Debugf("served info for %s", metric)
 	return
