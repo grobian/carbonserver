@@ -490,7 +490,7 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 	}
 	wr.Write(b)
 
-	logger.Logf("fetch: served %q from %d to %d", metric, fromTime, untilTime)
+	logger.Debugf("fetch: served %q from %d to %d", metric, fromTime, untilTime)
 }
 
 func infoHandler(wr http.ResponseWriter, req *http.Request) {
