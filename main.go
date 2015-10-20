@@ -6,7 +6,6 @@ import (
 	"expvar"
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"math"
 	"net/http"
@@ -22,12 +21,12 @@ import (
 	"unsafe"
 
 	pb "github.com/dgryski/carbonzipper/carbonzipperpb"
+	"github.com/dgryski/carbonzipper/mlog"
 	"github.com/dgryski/go-trigram"
 	"github.com/dgryski/httputil"
 	"github.com/gogo/protobuf/proto"
 	whisper "github.com/grobian/go-whisper"
 	pickle "github.com/kisielk/og-rek"
-	"github.com/lestrrat/go-file-rotatelogs"
 	g2g "github.com/peterbourgon/g2g"
 )
 
@@ -65,7 +64,7 @@ var Metrics = struct {
 
 var BuildVersion string = "(development build)"
 
-var logger logLevel
+var logger mlog.Level
 
 type fileIndex struct {
 	idx   trigram.Index
@@ -574,31 +573,20 @@ func main() {
 
 	flag.Parse()
 
-	rl := rotatelogs.NewRotateLogs(
-		*logdir + "/carbonserver.%Y%m%d%H%M.log",
-	)
-
-	// Optional fields must be set afterwards
-	rl.LinkName = *logdir + "/carbonserver.log"
-
-	if *logtostdout {
-		log.SetOutput(io.MultiWriter(os.Stdout, rl))
-	} else {
-		log.SetOutput(rl)
-	}
+	mlog.SetOutput(*logdir, "carbonserver", *logtostdout)
 
 	expvar.NewString("BuildVersion").Set(BuildVersion)
 	log.Println("starting carbonserver", BuildVersion)
 
-	loglevel := LOG_NORMAL
+	loglevel := mlog.Normal
 	if *verbose {
-		loglevel = LOG_DEBUG
+		loglevel = mlog.Debug
 	}
 	if *debug {
-		loglevel = LOG_TRACE
+		loglevel = mlog.Trace
 	}
 
-	logger = logLevel(loglevel)
+	logger = mlog.Level(loglevel)
 
 	config.WhisperData = strings.TrimRight(*whisperdata, "/")
 	logger.Logf("reading whisper files from: %s", config.WhisperData)
@@ -672,45 +660,6 @@ func main() {
 		log.Fatalf("%s", err)
 	}
 	logger.Logf("stopped")
-}
-
-type logLevel int
-
-const (
-	LOG_NORMAL logLevel = iota
-	LOG_DEBUG
-	LOG_TRACE
-)
-
-func (ll logLevel) Debugf(format string, a ...interface{}) {
-	if ll >= LOG_DEBUG {
-		log.Printf(format, a...)
-	}
-}
-
-func (ll logLevel) Debugln(a ...interface{}) {
-	if ll >= LOG_DEBUG {
-		log.Println(a...)
-	}
-}
-
-func (ll logLevel) Tracef(format string, a ...interface{}) {
-	if ll >= LOG_TRACE {
-		log.Printf(format, a...)
-	}
-}
-
-func (ll logLevel) Traceln(a ...interface{}) {
-	if ll >= LOG_TRACE {
-		log.Println(a...)
-	}
-}
-func (ll logLevel) Logln(a ...interface{}) {
-	log.Println(a...)
-}
-
-func (ll logLevel) Logf(format string, a ...interface{}) {
-	log.Printf(format, a...)
 }
 
 var timeBuckets []int64
