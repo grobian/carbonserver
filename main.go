@@ -574,6 +574,7 @@ func main() {
 	logdir := flag.String("logdir", "/var/log/carbonserver/", "logging directory")
 	logtostdout := flag.Bool("stdout", false, "log also to stdout")
 	scanFrequency := flag.Duration("scanfreq", 0, "file index scan frequency (0 to disable file index)")
+	interval := flag.Int("i", 60, "interval to report internal statistics to graphite")
 
 	flag.Parse()
 
@@ -631,7 +632,7 @@ func main() {
 		logger.Logf("Using graphite host %v", config.GraphiteHost)
 
 		// register our metrics with graphite
-		graphite, err := g2g.NewGraphite(config.GraphiteHost, 60*time.Second, 10*time.Second)
+		graphite, err := g2g.NewGraphite(config.GraphiteHost, time.Duration(*interval)*time.Second, 10*time.Second)
 		if err != nil {
 			log.Fatalf("unable to connect to to graphite: %v: %v", config.GraphiteHost, err)
 		}
