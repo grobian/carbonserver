@@ -335,6 +335,8 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 	from := req.FormValue("from")
 	until := req.FormValue("until")
 
+	t0 := time.Now()
+
 	// Make sure we log which metric caused a panic()
 	defer func() {
 		if r := recover(); r != nil {
@@ -490,7 +492,7 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 	}
 	wr.Write(b)
 
-	logger.Debugf("fetch: served %q from %d to %d", metric, fromTime, untilTime)
+	logger.Debugf("fetch: served %q from %d to %d in %v", metric, fromTime, untilTime, time.Since(t0))
 }
 
 func infoHandler(wr http.ResponseWriter, req *http.Request) {
