@@ -574,7 +574,7 @@ func main() {
 	logdir := flag.String("logdir", "/var/log/carbonserver/", "logging directory")
 	logtostdout := flag.Bool("stdout", false, "log also to stdout")
 	scanFrequency := flag.Duration("scanfreq", 0, "file index scan frequency (0 to disable file index)")
-	interval := flag.Duration("i", 60, "interval to report internal statistics to graphite")
+	interval := flag.Duration("i", 60*time.Second, "interval to report internal statistics to graphite")
 
 	flag.Parse()
 
