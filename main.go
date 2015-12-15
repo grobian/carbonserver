@@ -726,7 +726,9 @@ func extractTrigrams(query string) []trigram.T {
 		i++
 	}
 
-	trigrams = trigram.Extract(query[start:i], trigrams)
+	if start < i {
+		trigrams = trigram.Extract(query[start:i], trigrams)
+	}
 
 	return trigrams
 }
