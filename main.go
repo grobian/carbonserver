@@ -38,6 +38,7 @@ import (
 
 	pb "github.com/dgryski/carbonzipper/carbonzipperpb"
 	"github.com/dgryski/carbonzipper/mlog"
+	"github.com/dgryski/carbonzipper/mstats"
 	"github.com/dgryski/go-trigram"
 	"github.com/dgryski/httputil"
 	"github.com/gogo/protobuf/proto"
@@ -658,22 +659,24 @@ func main() {
 		hostname, _ := os.Hostname()
 		hostname = strings.Replace(hostname, ".", "_", -1)
 
-		graphite.Register(fmt.Sprintf("carbon.server.%s.render_requests",
-			hostname), Metrics.RenderRequests)
-		graphite.Register(fmt.Sprintf("carbon.server.%s.render_errors",
-			hostname), Metrics.RenderErrors)
-		graphite.Register(fmt.Sprintf("carbon.server.%s.notfound",
-			hostname), Metrics.NotFound)
-		graphite.Register(fmt.Sprintf("carbon.server.%s.find_requests",
-			hostname), Metrics.FindRequests)
-		graphite.Register(fmt.Sprintf("carbon.server.%s.find_errors",
-			hostname), Metrics.FindErrors)
-		graphite.Register(fmt.Sprintf("carbon.server.%s.find_zero",
-			hostname), Metrics.FindZero)
+		graphite.Register(fmt.Sprintf("carbon.server.%s.render_requests", hostname), Metrics.RenderRequests)
+		graphite.Register(fmt.Sprintf("carbon.server.%s.render_errors", hostname), Metrics.RenderErrors)
+		graphite.Register(fmt.Sprintf("carbon.server.%s.notfound", hostname), Metrics.NotFound)
+		graphite.Register(fmt.Sprintf("carbon.server.%s.find_requests", hostname), Metrics.FindRequests)
+		graphite.Register(fmt.Sprintf("carbon.server.%s.find_errors", hostname), Metrics.FindErrors)
+		graphite.Register(fmt.Sprintf("carbon.server.%s.find_zero", hostname), Metrics.FindZero)
 
 		for i := 0; i <= config.Buckets; i++ {
 			graphite.Register(fmt.Sprintf("carbon.server.%s.requests_in_%dms_to_%dms", hostname, i*100, (i+1)*100), bucketEntry(i))
 		}
+
+		go mstats.Start(*interval)
+
+		graphite.Register(fmt.Sprintf("carbon.server.%s.alloc", hostname), &mstats.Alloc)
+		graphite.Register(fmt.Sprintf("carbon.server.%s.total_alloc", hostname), &mstats.TotalAlloc)
+		graphite.Register(fmt.Sprintf("carbon.server.%s.num_gc", hostname), &mstats.NumGC)
+		graphite.Register(fmt.Sprintf("carbon.server.%s.pause_ns", hostname), &mstats.PauseNS)
+
 	}
 
 	listen := fmt.Sprintf(":%d", *port)
