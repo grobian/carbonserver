@@ -247,8 +247,12 @@ func expandGlobs(query string) ([]string, []bool) {
 
 	leafs := make([]bool, len(files))
 	for i, p := range files {
+		s, err := os.Stat(p)
+		if err != nil {
+			continue
+		}
 		p = p[len(config.WhisperData+"/"):]
-		if strings.HasSuffix(p, ".wsp") {
+		if !s.IsDir() && strings.HasSuffix(p, ".wsp") {
 			p = p[:len(p)-4]
 			leafs[i] = true
 		} else {
