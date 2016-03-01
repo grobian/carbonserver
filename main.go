@@ -655,10 +655,7 @@ func main() {
 		logger.Logf("Using graphite host %v", config.GraphiteHost)
 
 		// register our metrics with graphite
-		graphite, err := g2g.NewGraphite(config.GraphiteHost, *interval, 10*time.Second)
-		if err != nil {
-			log.Fatalf("unable to connect to to graphite: %v: %v", config.GraphiteHost, err)
-		}
+		graphite := g2g.NewGraphite(config.GraphiteHost, *interval, 10*time.Second)
 
 		hostname, _ := os.Hostname()
 		hostname = strings.Replace(hostname, ".", "_", -1)
