@@ -28,3 +28,4 @@ Acknowledgement
 This program was originally developed for Booking.com.  With approval
 from Booking.com, the code was generalised and published as Open Source
 on github, for which the authors would like to express their gratitude.
+Fabian Groffen no longer works for Booking.com.
