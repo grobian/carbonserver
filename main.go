@@ -22,7 +22,6 @@ import (
 	"expvar"
 	"flag"
 	"fmt"
-	"log"
 	"math"
 	"net/http"
 	_ "net/http/pprof"
@@ -403,7 +402,7 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 	for i, metric := range files {
 
 		if !leafs[i] {
-			log.Printf("skipping directory = %q\n", metric)
+			logger.Debugf("skipping directory = %q\n", metric)
 			// can't fetch a directory
 			continue
 		}
@@ -414,7 +413,7 @@ func fetchHandler(wr http.ResponseWriter, req *http.Request) {
 			// the FE/carbonzipper often requests metrics we don't have
 			// We shouldn't really see this any more -- expandGlobs() should filter them out
 			Metrics.NotFound.Add(1)
-			log.Printf("error opening %q: %v\n", path, err)
+			logger.Logf("error opening %q: %v\n", path, err)
 			continue
 		}
 
@@ -604,7 +603,7 @@ func main() {
 	mlog.SetOutput(*logdir, "carbonserver", *logtostdout)
 
 	expvar.NewString("BuildVersion").Set(BuildVersion)
-	log.Println("starting carbonserver", BuildVersion)
+	logger.Logln("starting carbonserver", BuildVersion)
 
 	loglevel := mlog.Normal
 	if *verbose {
@@ -684,7 +683,7 @@ func main() {
 	logger.Logf("listening on %s", listen)
 	err := http.ListenAndServe(listen, nil)
 	if err != nil {
-		log.Fatalf("%s", err)
+		logger.Fatalf("%s", err)
 	}
 	logger.Logf("stopped")
 }
