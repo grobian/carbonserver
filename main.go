@@ -600,7 +600,11 @@ func main() {
 
 	flag.Parse()
 
-	mlog.SetOutput(*logdir, "carbonserver", *logtostdout)
+	if *logdir == "" {
+		mlog.SetRawStream(os.Stdout)
+	} else {
+		mlog.SetOutput(*logdir, "carbonserver", *logtostdout)
+	}
 
 	expvar.NewString("BuildVersion").Set(BuildVersion)
 	logger.Logln("starting carbonserver", BuildVersion)
