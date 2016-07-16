@@ -33,7 +33,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
-	"unsafe"
 
 	pb "github.com/dgryski/carbonzipper/carbonzipperpb"
 	"github.com/dgryski/carbonzipper/mlog"
@@ -87,9 +86,10 @@ type fileIndex struct {
 	files []string
 }
 
-var fileIdx unsafe.Pointer            // actual type is *fileIndex
-func CurrentFileIndex() *fileIndex    { return (*fileIndex)(atomic.LoadPointer(&fileIdx)) }
-func UpdateFileIndex(fidx *fileIndex) { atomic.StorePointer(&fileIdx, unsafe.Pointer(fidx)) }
+var fileIdx atomic.Value
+
+func CurrentFileIndex() *fileIndex    { return fileIdx.Load().(*fileIndex) }
+func UpdateFileIndex(fidx *fileIndex) { fileIdx.Store(fidx) }
 
 func fileListUpdater(dir string, tick <-chan time.Time, force <-chan struct{}) {
 
