@@ -88,7 +88,13 @@ type fileIndex struct {
 
 var fileIdx atomic.Value
 
-func CurrentFileIndex() *fileIndex    { return fileIdx.Load().(*fileIndex) }
+func CurrentFileIndex() *fileIndex {
+	p := fileIdx.Load()
+	if p == nil {
+		return nil
+	}
+	return p.(*fileIndex)
+}
 func UpdateFileIndex(fidx *fileIndex) { fileIdx.Store(fidx) }
 
 func fileListUpdater(dir string, tick <-chan time.Time, force <-chan struct{}) {
