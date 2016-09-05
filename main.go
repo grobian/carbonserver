@@ -34,6 +34,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/NYTimes/gziphandler"
 	pb "github.com/dgryski/carbonzipper/carbonzipperpb"
 	"github.com/dgryski/carbonzipper/mlog"
 	"github.com/dgryski/carbonzipper/mstats"
@@ -691,7 +692,7 @@ func main() {
 
 	listen := fmt.Sprintf(":%d", *port)
 	logger.Logf("listening on %s", listen)
-	err := http.ListenAndServe(listen, nil)
+	err := http.ListenAndServe(listen, gziphandler.GzipHandler(http.DefaultServeMux))
 	if err != nil {
 		logger.Fatalf("%s", err)
 	}
