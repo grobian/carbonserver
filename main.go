@@ -44,6 +44,7 @@ import (
 	whisper "github.com/grobian/go-whisper"
 	pickle "github.com/kisielk/og-rek"
 	g2g "github.com/peterbourgon/g2g"
+	"github.com/facebookgo/pidfile"
 )
 
 var config = struct {
@@ -604,6 +605,7 @@ func main() {
 	logtostdout := flag.Bool("stdout", false, "log also to stdout")
 	scanFrequency := flag.Duration("scanfreq", 0, "file index scan frequency (0 to disable file index)")
 	interval := flag.Duration("i", 60*time.Second, "interval to report internal statistics to graphite")
+	pidFile := flag.String("pid", "", "pidfile (default: empty, don't create pidfile)")
 
 	flag.Parse()
 
@@ -688,6 +690,14 @@ func main() {
 		graphite.Register(fmt.Sprintf("carbon.server.%s.num_gc", hostname), &mstats.NumGC)
 		graphite.Register(fmt.Sprintf("carbon.server.%s.pause_ns", hostname), &mstats.PauseNS)
 
+	}
+
+	if *pidFile != "" {
+		pidfile.SetPidfilePath(*pidFile)
+		err := pidfile.Write()
+		if err != nil {
+			logger.Fatalln("error during pidfile.Write():", err)
+		}
 	}
 
 	listen := fmt.Sprintf(":%d", *port)
